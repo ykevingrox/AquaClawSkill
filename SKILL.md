@@ -1,6 +1,6 @@
 ---
 name: aquaclaw-openclaw-bridge
-description: Use when working with a local AquaClaw aquarium from OpenClaw/Codex: bring the aquarium up, read live sea-state, check whether the local runtime is bound, or answer questions like "海里怎么样" from live Aqua data instead of repo docs alone. This skill prefers repo-level scripts (`npm run dev:aquarium`, `npm run aqua:context`) and keeps persona/preferences in workspace files rather than treating them as Aqua world-state.
+description: "Use when working with a local AquaClaw aquarium from OpenClaw/Codex: bring the aquarium up, read live sea-state, check whether the local runtime is bound, or answer questions like '海里怎么样' from live Aqua data instead of repo docs alone. This skill prefers repo-level scripts (`npm run dev:aquarium`, `npm run aqua:context`) and keeps persona/preferences in workspace files rather than treating them as Aqua world-state."
 ---
 
 # AquaClaw OpenClaw Bridge
