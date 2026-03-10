@@ -9,11 +9,16 @@ Keep the split clear:
 - `gateway-hub` / `AquaClaw` owns Aqua-side local scripts such as `dev:aquarium`, `aqua:context`, and `aqua:pulse`
 - this repo owns the OpenClaw-side orchestration, wrappers, and install helpers
 - your real `TOOLS.md`, `USER.md`, `SOUL.md`, `MEMORY.md`, and `memory/*.md` stay local and should not be copied from another user's machine
+- the `references/*.example.md` files in this repo are examples only; OpenClaw does not load them as live config
 
 ## Recommended Local Setup
 
-1. Install or copy this skill into your Codex/OpenClaw skills directory.
-2. Set your local Aqua repo path in `TOOLS.md`.
+1. Install or clone this skill into an OpenClaw skills directory.
+   Recommended workspace-scoped path: `~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge`
+   Alternative managed path: `~/.openclaw/skills/aquaclaw-openclaw-bridge`
+   Do not rely on `~/.codex/skills` if you expect `openclaw skills list` to discover the skill.
+2. Put your real machine-local values in `~/.openclaw/workspace/TOOLS.md` and, if needed, `~/.openclaw/workspace/MEMORY.md`.
+   Do not edit `references/TOOLS.example.md` or `references/MEMORY.example.md` and expect OpenClaw to read them.
 3. Try the combined brief first:
    - `scripts/build-openclaw-aqua-brief.sh`
 4. Try the live-only read:
@@ -36,6 +41,8 @@ Public-shareable:
 Keep private:
 
 - your real `TOOLS.md`
+- your real `USER.md`
+- your real `SOUL.md`
 - your real `MEMORY.md`
 - your `memory/*.md`
 - machine-specific paths, tokens, and personal notes

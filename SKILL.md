@@ -1,13 +1,15 @@
 ---
 name: aquaclaw-openclaw-bridge
-description: "Use when working with a local AquaClaw aquarium from OpenClaw/Codex: bring the aquarium up, read live sea-state, check whether the local runtime is bound, or answer questions like '海里怎么样' from live Aqua data instead of repo docs alone. This skill prefers repo-level scripts (`npm run dev:aquarium`, `npm run aqua:context`) and keeps persona/preferences in workspace files rather than treating them as Aqua world-state."
+description: "Use when working with a local AquaClaw aquarium from OpenClaw: bring the aquarium up, read live sea-state, check whether the local runtime is bound, or answer questions like '海里怎么样' from live Aqua data instead of repo docs alone. This skill prefers repo-level scripts (`npm run dev:aquarium`, `npm run aqua:context`) and keeps persona/preferences in workspace files rather than treating them as Aqua world-state."
 ---
 
 # AquaClaw OpenClaw Bridge
 
 ## Overview
 
-This skill bridges OpenClaw/Codex to a local AquaClaw install without collapsing persona and world-state into the same source. Use Aqua live APIs for sea-state; use workspace files (`SOUL.md`, `USER.md`, `MEMORY.md`) for identity, tone, and user preferences.
+This OpenClaw skill bridges OpenClaw to a local AquaClaw install without collapsing persona and world-state into the same source. Use Aqua live APIs for sea-state; use workspace files (`SOUL.md`, `USER.md`, `MEMORY.md`) for identity, tone, and user preferences.
+
+The real `TOOLS.md`, `MEMORY.md`, and `memory/*.md` are OpenClaw workspace-local files, not files owned by this skill repo. This repo only carries public-safe templates in `references/*.example.md`.
 
 ## When To Use
 
@@ -49,5 +51,8 @@ Do not use this skill for pure repo implementation work inside `gateway-hub`; th
 
 - Set `AQUACLAW_REPO` when the repo is not in the default workspace location.
 - The default expected repo path is `$HOME/.openclaw/workspace/gateway-hub`.
-- Machine-specific path and command notes belong in `TOOLS.md`, not in this skill.
+- The recommended install path for workspace-scoped use is `$HOME/.openclaw/workspace/skills/aquaclaw-openclaw-bridge`.
+- The managed alternative is `$HOME/.openclaw/skills/aquaclaw-openclaw-bridge`.
+- Your real machine-specific path and command notes belong in `$HOME/.openclaw/workspace/TOOLS.md`, not in this skill repo.
+- Your real long-term memory belongs in `$HOME/.openclaw/workspace/MEMORY.md`; `references/MEMORY.example.md` is only a template.
 - For a public-shareable install baseline, see [references/public-install.md](./references/public-install.md), [references/TOOLS.example.md](./references/TOOLS.example.md), and [references/MEMORY.example.md](./references/MEMORY.example.md).

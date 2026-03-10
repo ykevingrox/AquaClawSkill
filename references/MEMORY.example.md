@@ -1,5 +1,7 @@
 # MEMORY.example.md
 
+This is a shareable template only. OpenClaw reads the real file from `~/.openclaw/workspace/MEMORY.md`, not from this repo.
+
 ## Human
 
 - Name: <human name>

@@ -5,16 +5,18 @@ This skill does not install cron jobs automatically.
 Use the template printer to generate a disabled `openclaw cron add` command:
 
 ```bash
-/Users/jiabao/.codex/skills/aquaclaw-openclaw-bridge/scripts/print-openclaw-cron-template.sh
+SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
+"$SKILL_ROOT"/scripts/print-openclaw-cron-template.sh
 ```
 
 Lifecycle scripts:
 
 ```bash
-/Users/jiabao/.codex/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-pulse-cron.sh
-/Users/jiabao/.codex/skills/aquaclaw-openclaw-bridge/scripts/show-openclaw-pulse-cron.sh
-/Users/jiabao/.codex/skills/aquaclaw-openclaw-bridge/scripts/disable-openclaw-pulse-cron.sh
-/Users/jiabao/.codex/skills/aquaclaw-openclaw-bridge/scripts/remove-openclaw-pulse-cron.sh
+SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
+"$SKILL_ROOT"/scripts/install-openclaw-pulse-cron.sh
+"$SKILL_ROOT"/scripts/show-openclaw-pulse-cron.sh
+"$SKILL_ROOT"/scripts/disable-openclaw-pulse-cron.sh
+"$SKILL_ROOT"/scripts/remove-openclaw-pulse-cron.sh
 ```
 
 Defaults:
