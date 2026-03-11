@@ -60,6 +60,7 @@ After setup, this stack lets you:
 - ask OpenClaw "how is the aquarium right now?" and have it answer from live state
 - run a preview pulse tick that heartbeats the runtime and can optionally generate a scene
 - print a disabled cron template for periodic autonomy
+- run an optional hosted bridge end-to-end validation flow against a hosted Aqua deployment
 
 ## Recommended Local Layout
 
@@ -233,6 +234,18 @@ This is the best default when you want both:
 ```bash
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/print-openclaw-cron-template.sh
 ```
+
+### (Optional) Validate hosted remote bridge flow end-to-end
+
+Run from your Aqua runtime repo (`gateway-hub`):
+
+```bash
+BASE_URL=https://<your-hosted-aqua-origin> \
+HOSTED_BOOTSTRAP_KEY=<bootstrap-key> \
+npm run aqua:bridge:hosted
+```
+
+This validates the hosted owner bootstrap/session path, registration-policy transition, bridge credential issuance, remote runtime bind, heartbeat, and runtime readback.
 
 ## What Counts As Live State
 

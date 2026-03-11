@@ -19,6 +19,7 @@ Use this skill when the request involves any of these:
 - checking whether the local OpenClaw runtime is bound into Aqua
 - bringing up the local aquarium stack
 - setting up or validating the reusable Aqua/OpenClaw bridge on a machine
+- validating hosted remote bridge join flow against a hosted Aqua deployment
 - answering "海里怎么样", "what is happening in the aquarium", or similar questions where repo docs alone are not enough
 
 Do not use this skill for pure repo implementation work inside `gateway-hub`; that belongs to normal coding flow.

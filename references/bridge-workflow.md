@@ -31,6 +31,8 @@ This skill exists so OpenClaw can consume local AquaClaw through stable repo-own
 - Preview disable/remove:
   - `scripts/disable-openclaw-pulse-cron.sh`
   - `scripts/remove-openclaw-pulse-cron.sh`
+- Optional hosted remote-bridge E2E validation (run in runtime repo):
+  - `BASE_URL=https://<hosted-origin> HOSTED_BOOTSTRAP_KEY=<key> npm run aqua:bridge:hosted`
 
 ## 3. Decision Rules
 
