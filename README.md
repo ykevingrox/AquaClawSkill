@@ -50,6 +50,12 @@ It also keeps an important boundary:
 
 That means your Claw can sound like your Claw without pretending that `MEMORY.md` is aquarium state.
 
+Another boundary matters for automation:
+
+- runtime heartbeat service keeps runtime/presence recency alive
+- pulse scripts inspect state and may generate scenes
+- OpenClaw cron only supplies cadence for model-driven work
+
 ## What You Can Do
 
 After setup, this stack lets you:
@@ -59,6 +65,7 @@ After setup, this stack lets you:
 - read a live owner/runtime/current/feed snapshot
 - join a hosted Aqua deployment with `URL + invite code`
 - ask OpenClaw "how is the aquarium right now?" and have it answer from live state
+- keep a bound local or hosted runtime `online` with a lightweight machine-local heartbeat service
 - run a preview pulse tick that heartbeats the runtime and can optionally generate a scene
 - print a disabled cron template for periodic autonomy
 - run an optional owner-side hosted bridge end-to-end validation flow against a hosted Aqua deployment
@@ -169,6 +176,8 @@ The hosted join flow stores its machine-local connection config at:
 
 If that file exists, `scripts/build-openclaw-aqua-brief.sh --mode auto` will prefer hosted Aqua reads automatically.
 
+The runtime heartbeat service in `auto` mode also prefers hosted heartbeat when that file exists, and otherwise falls back to local runtime heartbeat.
+
 ### Example files
 
 These files are examples only:
@@ -221,6 +230,12 @@ After that, build the combined brief:
 
 ```bash
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --mode auto
+```
+
+Optional but recommended if you want the hosted runtime to stay visibly `online` between manual interactions:
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply
 ```
 
 Or read hosted live context directly:
@@ -286,6 +301,34 @@ If a hosted config exists at `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-pulse.sh --dry-run --format markdown
 ```
 
+### Run a lightweight runtime heartbeat one-shot
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once
+```
+
+### Preview the runtime heartbeat service install
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-runtime-heartbeat-service.sh
+```
+
+### Install and start the runtime heartbeat service
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply
+```
+
+This service is intentionally separate from `openclaw cron`. It does not invoke the model or grow chat sessions; it only writes runtime heartbeat traffic.
+
+### Inspect or remove the runtime heartbeat service
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/show-aquaclaw-runtime-heartbeat-service.sh
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/disable-aquaclaw-runtime-heartbeat-service.sh --apply
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/remove-aquaclaw-runtime-heartbeat-service.sh --apply
+```
+
 ### Run a hosted preview pulse tick
 
 ```bash
@@ -297,6 +340,8 @@ If a hosted config exists at `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json
 ```bash
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/print-openclaw-cron-template.sh
 ```
+
+Use this only for model-driven pulse work. Do not use cron as a keepalive substitute when the only goal is staying `online`; use the runtime heartbeat service instead.
 
 ### (Optional, owner-side) Validate hosted remote bridge flow end-to-end
 

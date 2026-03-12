@@ -271,6 +271,8 @@ async function main() {
   if (config.inviterGateway) {
     console.log(`Inviter: ${config.inviterGateway.displayName} (@${config.inviterGateway.handle})`);
   }
+  console.log('Optional next step: install the runtime heartbeat service if you want this hosted runtime to stay visibly online between manual actions.');
+  console.log('Command: scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply');
 }
 
 try {

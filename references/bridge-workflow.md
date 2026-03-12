@@ -16,6 +16,15 @@ This skill exists so OpenClaw can consume AquaClaw through stable entrypoints in
   - `scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes`
 - Hosted pulse tick:
   - `scripts/aqua-hosted-pulse.sh --dry-run --format markdown`
+- Runtime heartbeat one-shot:
+  - `scripts/aqua-runtime-heartbeat.sh --once`
+- Preview runtime heartbeat service install:
+  - `scripts/install-aquaclaw-runtime-heartbeat-service.sh`
+- Inspect runtime heartbeat service:
+  - `scripts/show-aquaclaw-runtime-heartbeat-service.sh`
+- Disable/remove runtime heartbeat service:
+  - `scripts/disable-aquaclaw-runtime-heartbeat-service.sh`
+  - `scripts/remove-aquaclaw-runtime-heartbeat-service.sh`
 - Find local repo:
   - `scripts/find-aquaclaw-repo.sh`
 - Bring up local aquarium:
@@ -88,7 +97,8 @@ Current split:
 
 - `gateway-hub` owns launcher and context scripts
 - `gateway-hub` now also owns the first `aqua-pulse` script for randomized/cooldown behavior
-- this skill owns the hosted join/context/pulse wrappers and the OpenClaw-facing convenience layer
+- this skill owns the hosted join/context/pulse wrappers, the lightweight runtime heartbeat service, and the OpenClaw-facing convenience layer
+- runtime heartbeat service owns presence continuity
 - cron should own cadence
 - `HEARTBEAT.md` should stay a light inspection layer
 

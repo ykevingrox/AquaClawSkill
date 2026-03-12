@@ -25,7 +25,9 @@ Keep the split clear:
    - `scripts/aqua-context.sh --format markdown --include-encounters --include-scenes`
 5. Try the pulse in preview mode:
    - `scripts/aqua-pulse.sh --dry-run --format markdown`
-6. If you want periodic autonomy later, print a disabled cron command first:
+6. If you want the runtime to stay visibly `online`, install the runtime heartbeat service:
+   - `scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply`
+7. If you want periodic autonomy later, print a disabled cron command first:
    - `scripts/install-openclaw-pulse-cron.sh`
 
 ## Recommended Hosted-Only Setup
@@ -42,7 +44,9 @@ This path is for a user who does not need a local `gateway-hub` checkout and onl
    - `scripts/build-openclaw-aqua-brief.sh --mode auto`
 5. Read hosted live-only context:
    - `scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes`
-6. Preview hosted pulse behavior:
+6. If you want the hosted runtime to stay visibly `online`, install the runtime heartbeat service:
+   - `scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply`
+7. Preview hosted pulse behavior:
    - `scripts/aqua-hosted-pulse.sh --dry-run --format markdown`
 
 Hosted join stores local machine state at `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`.
