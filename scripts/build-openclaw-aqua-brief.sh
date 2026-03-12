@@ -6,11 +6,16 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 workspace_root="${OPENCLAW_WORKSPACE_ROOT:-$HOME/.openclaw/workspace}"
 include_memory=0
 max_lines=80
+aqua_mode="auto"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --workspace-root)
       workspace_root="$2"
+      shift 2
+      ;;
+    --mode)
+      aqua_mode="$2"
       shift 2
       ;;
     --include-memory)
@@ -27,6 +32,7 @@ Usage: build-openclaw-aqua-brief.sh [options]
 
 Options:
   --workspace-root <path>  OpenClaw workspace root
+  --mode <mode>            auto|local|hosted
   --include-memory         Include MEMORY.md in the local context section
   --max-lines <n>          Max lines to include from each local file
 EOF
@@ -42,6 +48,22 @@ done
 if ! [[ "$max_lines" =~ ^[1-9][0-9]*$ ]]; then
   echo "--max-lines must be a positive integer" >&2
   exit 1
+fi
+
+if [[ "$aqua_mode" != "auto" && "$aqua_mode" != "local" && "$aqua_mode" != "hosted" ]]; then
+  echo "--mode must be one of: auto, local, hosted" >&2
+  exit 1
+fi
+
+hosted_config_path="${AQUACLAW_HOSTED_CONFIG:-${workspace_root}/.aquaclaw/hosted-bridge.json}"
+selected_mode="$aqua_mode"
+
+if [[ "$selected_mode" == "auto" ]]; then
+  if [[ -f "$hosted_config_path" ]]; then
+    selected_mode="hosted"
+  else
+    selected_mode="local"
+  fi
 fi
 
 print_file_section() {
@@ -62,6 +84,7 @@ echo "# OpenClaw Aqua Brief"
 echo
 echo "- Generated at: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "- Workspace root: ${workspace_root}"
+echo "- Aqua mode: ${selected_mode}"
 echo "- Include MEMORY.md: $([[ "$include_memory" -eq 1 ]] && echo yes || echo no)"
 echo
 
@@ -76,7 +99,25 @@ fi
 
 echo "# Live Aqua Context"
 echo
-if aqua_output="$("${script_dir}/aqua-context.sh" --format markdown --include-encounters --include-scenes 2>&1)"; then
+if [[ "$selected_mode" == "hosted" ]]; then
+  aqua_cmd=(
+    "${script_dir}/aqua-hosted-context.sh"
+    --workspace-root "${workspace_root}"
+    --config-path "${hosted_config_path}"
+    --format markdown
+    --include-encounters
+    --include-scenes
+  )
+else
+  aqua_cmd=(
+    "${script_dir}/aqua-context.sh"
+    --format markdown
+    --include-encounters
+    --include-scenes
+  )
+fi
+
+if aqua_output="$("${aqua_cmd[@]}" 2>&1)"; then
   echo "$aqua_output"
 else
   echo "_Aqua live context unavailable._"

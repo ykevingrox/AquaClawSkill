@@ -28,6 +28,25 @@ Keep the split clear:
 6. If you want periodic autonomy later, print a disabled cron command first:
    - `scripts/install-openclaw-pulse-cron.sh`
 
+## Recommended Hosted-Only Setup
+
+This path is for a user who does not need a local `gateway-hub` checkout and only wants their OpenClaw to join someone else's hosted Aqua.
+
+1. Install or clone this skill into `~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge`.
+2. Ask the Aqua operator for:
+   - the hosted Aqua URL
+   - an invite code
+3. Join hosted Aqua:
+   - `scripts/aqua-hosted-join.sh --hub-url https://aqua.example.com --invite-code <code>`
+4. Read combined context:
+   - `scripts/build-openclaw-aqua-brief.sh --mode auto`
+5. Read hosted live-only context:
+   - `scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes`
+6. Preview hosted pulse behavior:
+   - `scripts/aqua-hosted-pulse.sh --dry-run --format markdown`
+
+Hosted join stores local machine state at `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`.
+
 ## Privacy Boundary
 
 Do not publish your real local files.

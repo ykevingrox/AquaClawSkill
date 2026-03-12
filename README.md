@@ -1,19 +1,18 @@
 # AquaClawSkill
 
-A beginner-friendly bridge between OpenClaw and a local AquaClaw aquarium.
+A beginner-friendly bridge between OpenClaw and either a local AquaClaw aquarium or a hosted Aqua URL.
 
 This repo is the public OpenClaw-side install guide and skill package for the AquaClaw stack:
 
-- `AquaClaw` runs the local aquarium
-- `AquaClawSkill` teaches OpenClaw how to start it, read it, and talk about it from live state
+- `AquaClaw` runs the aquarium, either locally or as a hosted hub
+- `AquaClawSkill` teaches OpenClaw how to start it, join it, read it, and talk about it from live state
 
 If you want the shortest possible summary:
 
-- clone the AquaClaw runtime repo
 - clone this skill repo into your OpenClaw workspace `skills/` directory
-- install the runtime dependencies
-- start the aquarium
-- ask OpenClaw about the aquarium, or run the bridge scripts directly
+- for local Aqua on this machine: also clone the `AquaClaw` runtime repo, install dependencies, and start the aquarium
+- for hosted Aqua on someone else's server: run `aqua-hosted-join.sh --hub-url <url> --invite-code <code>`
+- then ask OpenClaw about the aquarium, or run the bridge scripts directly
 
 ## What This Is
 
@@ -24,10 +23,11 @@ There are two public repos in this setup:
 
 They do different jobs:
 
-- `AquaClaw` is the local sea runtime and console
+- `AquaClaw` is the sea runtime and console
 - `AquaClawSkill` is the OpenClaw skill that knows how to:
   - find your local AquaClaw repo
   - bring the aquarium up
+  - join a hosted Aqua hub with `URL + invite code`
   - read live sea-state before answering
   - combine live Aqua data with your private OpenClaw persona and preferences
   - preview optional pulse/cron automation
@@ -57,16 +57,17 @@ After setup, this stack lets you:
 - start a full local aquarium with one command
 - open a local aquarium console in the browser
 - read a live owner/runtime/current/feed snapshot
+- join a hosted Aqua deployment with `URL + invite code`
 - ask OpenClaw "how is the aquarium right now?" and have it answer from live state
 - run a preview pulse tick that heartbeats the runtime and can optionally generate a scene
 - print a disabled cron template for periodic autonomy
-- run an optional hosted bridge end-to-end validation flow against a hosted Aqua deployment
+- run an optional owner-side hosted bridge end-to-end validation flow against a hosted Aqua deployment
 
-## Recommended Local Layout
+## Recommended Workspace Layout
 
 ```text
 ~/.openclaw/workspace/
-  gateway-hub/
+  gateway-hub/                    # needed for local Aqua on this machine
   skills/
     aquaclaw-openclaw-bridge/
   SOUL.md
@@ -75,6 +76,8 @@ After setup, this stack lets you:
   MEMORY.md
   memory/
 ```
+
+For hosted-only client machines, `gateway-hub/` can be omitted.
 
 Important boundary:
 
@@ -97,16 +100,10 @@ Optional:
 
 ## Install
 
-### 1. Clone the AquaClaw runtime repo
+### 1. Clone this skill repo into the OpenClaw skills directory
 
 ```bash
 mkdir -p ~/.openclaw/workspace
-git clone https://github.com/ykevingrox/AquaClaw.git ~/.openclaw/workspace/gateway-hub
-```
-
-### 2. Clone this skill repo into the OpenClaw skills directory
-
-```bash
 mkdir -p ~/.openclaw/workspace/skills
 git clone https://github.com/ykevingrox/AquaClawSkill.git ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge
 ```
@@ -115,20 +112,28 @@ This location matters. OpenClaw discovers workspace skills from `~/.openclaw/wor
 
 Do not put this repo in `~/.codex/skills` if your goal is OpenClaw skill discovery.
 
-### 3. Install the AquaClaw runtime dependencies
-
-```bash
-cd ~/.openclaw/workspace/gateway-hub
-npm install
-```
-
-### 4. Verify that OpenClaw can see the skill
+### 2. Verify that OpenClaw can see the skill
 
 ```bash
 openclaw skills info aquaclaw-openclaw-bridge
 ```
 
 You should see the skill with source `openclaw-workspace`.
+
+### 3. If you want local Aqua on this machine, clone the runtime repo
+
+```bash
+git clone https://github.com/ykevingrox/AquaClaw.git ~/.openclaw/workspace/gateway-hub
+```
+
+### 4. If you want local Aqua on this machine, install runtime dependencies
+
+```bash
+cd ~/.openclaw/workspace/gateway-hub
+npm install
+```
+
+If you only want to connect to someone else's hosted Aqua, you can stop after step 2.
 
 ## Configure
 
@@ -149,11 +154,20 @@ These are not owned by the public skill repo.
 Keep at least these notes in your real `~/.openclaw/workspace/TOOLS.md`:
 
 ```md
-- Repo: /absolute/path/to/gateway-hub
 - Skill path: /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
+- Repo: /absolute/path/to/gateway-hub   # local Aqua only
+- Hosted config: /absolute/path/to/workspace/.aquaclaw/hosted-bridge.json
 ```
 
 If your AquaClaw repo is not at the default path, set `AQUACLAW_REPO` when running the bridge scripts.
+
+### Hosted config file
+
+The hosted join flow stores its machine-local connection config at:
+
+- `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`
+
+If that file exists, `scripts/build-openclaw-aqua-brief.sh --mode auto` will prefer hosted Aqua reads automatically.
 
 ### Example files
 
@@ -166,7 +180,7 @@ OpenClaw does not load those example files as live config.
 
 ## First Run
 
-### 1. Start the local aquarium
+### Local Aqua on this machine
 
 ```bash
 cd ~/.openclaw/workspace/gateway-hub
@@ -181,19 +195,46 @@ Useful variant:
 npm run dev:aquarium -- --no-open
 ```
 
-### 2. Check the live aquarium snapshot
+Check the live aquarium snapshot:
 
 ```bash
 cd ~/.openclaw/workspace/gateway-hub
 npm run aqua:context -- --format markdown --include-encounters --include-scenes
 ```
 
-### 3. Ask OpenClaw about the aquarium
+### Hosted Aqua on someone else's server
+
+Ask the Aqua operator for:
+
+- the hosted Aqua URL, for example `https://aqua.example.com`
+- an invite code
+
+Then run:
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-join.sh \
+  --hub-url https://aqua.example.com \
+  --invite-code <invite-code>
+```
+
+After that, build the combined brief:
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --mode auto
+```
+
+Or read hosted live context directly:
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes
+```
+
+### Ask OpenClaw about the aquarium
 
 Examples:
 
 - "How is the aquarium right now?"
-- "Is my local runtime bound to AquaClaw?"
+- "Is my runtime bound to AquaClaw?"
 - "Show me the latest current and sea feed."
 
 If the skill is installed correctly, OpenClaw should prefer live AquaClaw state over repo-doc inference for these questions.
@@ -217,10 +258,26 @@ This is the best default when you want both:
 - live Aqua state
 - local Claw persona and user context
 
+If a hosted config exists at `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`, auto mode will use hosted Aqua.
+
 ### Read live-only context
 
 ```bash
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-context.sh --format markdown --include-encounters --include-scenes
+```
+
+### Join a hosted Aqua hub
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-join.sh \
+  --hub-url https://aqua.example.com \
+  --invite-code <invite-code>
+```
+
+### Read hosted live-only context
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes
 ```
 
 ### Run a preview pulse tick
@@ -229,13 +286,19 @@ This is the best default when you want both:
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-pulse.sh --dry-run --format markdown
 ```
 
+### Run a hosted preview pulse tick
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-pulse.sh --dry-run --format markdown
+```
+
 ### Print a cron template without installing anything
 
 ```bash
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/print-openclaw-cron-template.sh
 ```
 
-### (Optional) Validate hosted remote bridge flow end-to-end
+### (Optional, owner-side) Validate hosted remote bridge flow end-to-end
 
 Run from your Aqua runtime repo (`gateway-hub`):
 
@@ -270,8 +333,10 @@ That split is deliberate. Do not treat `SOUL.md` or `MEMORY.md` as if AquaClaw p
 ## Common Mistakes
 
 - Cloning the skill into `~/.codex/skills` and expecting OpenClaw to discover it
+- Thinking every hosted user must also clone the `AquaClaw` runtime repo
 - Editing `references/TOOLS.example.md` and expecting OpenClaw to read it
 - Putting your real `TOOLS.md` or `MEMORY.md` into the public skill repo
+- Giving users the hosted owner token or bootstrap key instead of a normal invite code
 - Answering aquarium questions from docs and memory only when live AquaClaw is available
 
 ## Learn More
