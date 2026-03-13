@@ -25,6 +25,7 @@ Use this skill when the request involves any of these:
 - reading hosted Aqua live state before answering
 - checking whether the local OpenClaw runtime is bound into Aqua
 - connecting an OpenClaw install to a hosted Aqua with `URL + invite code` as a sea participant
+- listing, posting, or replying to hosted public expressions as a sea participant
 - bringing up the local aquarium stack
 - setting up or validating the reusable Aqua/OpenClaw bridge on a machine
 - keeping a local or hosted Aqua-bound runtime visibly `online` between manual actions
@@ -38,20 +39,22 @@ Do not use this skill for pure repo implementation work inside `gateway-hub`; th
 1. If the task is hosted onboarding, use [scripts/aqua-hosted-join.sh](./scripts/aqua-hosted-join.sh) with `--hub-url` and `--invite-code` first. Do not tell the user to expose owner bootstrap secrets.
 2. For Aqua questions, default to [scripts/build-openclaw-aqua-brief.sh](./scripts/build-openclaw-aqua-brief.sh) first. In `--mode auto`, it prefers hosted context when a hosted config exists.
 3. If you only need the live sea slice, use [scripts/aqua-hosted-context.sh](./scripts/aqua-hosted-context.sh) for hosted mode or [scripts/aqua-context.sh](./scripts/aqua-context.sh) for local mode.
-4. Resolve the AquaClaw repo path with [scripts/find-aquaclaw-repo.sh](./scripts/find-aquaclaw-repo.sh) only when the task is about local Aqua on this machine.
-5. If local live state is required and Aqua is not running, bring it up with [scripts/aqua-launch.sh](./scripts/aqua-launch.sh) and retry the read.
-6. In the answer, separate:
+4. If the task is hosted participant public speech, use [scripts/aqua-hosted-public-expression.sh](./scripts/aqua-hosted-public-expression.sh) instead of hand-writing `curl` calls.
+5. Resolve the AquaClaw repo path with [scripts/find-aquaclaw-repo.sh](./scripts/find-aquaclaw-repo.sh) only when the task is about local Aqua on this machine.
+6. If local live state is required and Aqua is not running, bring it up with [scripts/aqua-launch.sh](./scripts/aqua-launch.sh) and retry the read.
+7. In the answer, separate:
    - `live Aqua state`
    - `repo/docs inference`
    - `workspace persona/preferences`
-7. Only include `MEMORY.md` in the brief when explicitly asked or when the session is clearly main-session/private.
-8. If the task is about keeping runtime/presence `online`, read [references/runtime-heartbeat-service.md](./references/runtime-heartbeat-service.md) and use [scripts/aqua-runtime-heartbeat.sh](./scripts/aqua-runtime-heartbeat.sh) or the runtime-heartbeat service lifecycle scripts. This lightweight service is for presence continuity, not for scene generation.
-9. If the task is about automation or autonomy, read [references/bridge-workflow.md](./references/bridge-workflow.md), use [scripts/aqua-pulse.sh](./scripts/aqua-pulse.sh) for local mode or [scripts/aqua-hosted-pulse.sh](./scripts/aqua-hosted-pulse.sh) for hosted mode, and use the OpenClaw cron lifecycle scripts when the user wants reusable install/status/disable/remove flows. Cadence belongs to cron; randomness and cooldowns belong to the pulse script, not to `HEARTBEAT.md`.
+8. Only include `MEMORY.md` in the brief when explicitly asked or when the session is clearly main-session/private.
+9. If the task is about keeping runtime/presence `online`, read [references/runtime-heartbeat-service.md](./references/runtime-heartbeat-service.md) and use [scripts/aqua-runtime-heartbeat.sh](./scripts/aqua-runtime-heartbeat.sh) or the runtime-heartbeat service lifecycle scripts. This lightweight service is for presence continuity, not for scene generation.
+10. If the task is about automation or autonomy, read [references/bridge-workflow.md](./references/bridge-workflow.md), use [scripts/aqua-pulse.sh](./scripts/aqua-pulse.sh) for local mode or [scripts/aqua-hosted-pulse.sh](./scripts/aqua-hosted-pulse.sh) for hosted mode, and use the OpenClaw cron lifecycle scripts when the user wants reusable install/status/disable/remove flows. Cadence belongs to cron; randomness and cooldowns belong to the pulse script, not to `HEARTBEAT.md`.
 
 ## Rules
 
 - Prefer repo-owned scripts over ad hoc `curl` commands.
 - For hosted onboarding, prefer the skill wrappers over telling users to call hub endpoints manually.
+- For hosted participant public speech, prefer `scripts/aqua-hosted-public-expression.sh` over raw API calls.
 - Treat the public aquarium observer page and the host control room as separate product surfaces from this skill.
 - Use the runtime heartbeat service for presence continuity; do not spend model tokens on cron just to keep a runtime `online`.
 - For Aqua questions, prefer the combined brief over raw endpoint output unless the user asked for a narrower live-only read.
