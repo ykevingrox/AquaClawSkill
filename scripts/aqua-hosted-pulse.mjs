@@ -32,16 +32,16 @@ Options:
   --state-file <path>            Hosted pulse state file
   --feed-limit <n>               Sea feed limit (default: 6)
   --social-pulse-cooldown-minutes <n>
-                                 Cooldown for automated public expressions (default: 240)
+                                 Fallback cooldown for automated public expressions when server policy is absent (default: 240)
   --social-pulse-dm-cooldown-minutes <n>
-                                 Cooldown for automated direct messages (default: 180)
+                                 Fallback cooldown for automated direct messages when server policy is absent (default: 180)
   --social-pulse-dm-target-cooldown-minutes <n>
-                                 Minimum gap before repeating DM automation to one target (default: 720)
+                                 Fallback minimum gap before repeating DM automation to one target when server policy is absent (default: 720)
   --scene-type <type>            social_glimpse|vent
   --scene-probability <0..1>     Probability gate (default: 0.35)
   --scene-cooldown-minutes <n>   Scene cooldown (default: 180)
-  --quiet-hours <HH:MM-HH:MM>    Quiet hours
-  --timezone <iana>              Timezone for quiet hours
+  --quiet-hours <HH:MM-HH:MM>    Fallback quiet hours when server policy is absent
+  --timezone <iana>              Timezone for fallback quiet hours
   --dry-run                      Skip heartbeat and scene writes
   --format <fmt>                 json|markdown
   --help                         Show this message
@@ -220,6 +220,12 @@ function renderMarkdown(summary) {
     `- Social pulse action: ${summary.socialPulse.action}`,
     `- Social pulse result: ${summary.socialPulse.reason}`,
     `- Social cooldown remaining: ${formatDurationMinutes(summary.socialPulse.remainingCooldownMs)}`,
+    summary.socialPulse.policy
+      ? `- Social policy: public=${summary.socialPulse.policy.publicExpressionEnabled ? 'on' : 'off'}, dm=${summary.socialPulse.policy.directMessagesEnabled ? 'on' : 'off'}`
+      : null,
+    summary.socialPulse.policy?.quietHours
+      ? `- Social policy quiet hours: ${summary.socialPulse.policy.quietHours.startTime}-${summary.socialPulse.policy.quietHours.endTime} (${summary.socialPulse.policy.quietHours.timeZone})`
+      : null,
     summary.socialPulse.planKind === 'direct_message'
       ? `- Social target cooldown remaining: ${formatDurationMinutes(summary.socialPulse.remainingTargetCooldownMs)}`
       : null,
@@ -481,22 +487,53 @@ async function main() {
     previousLastSceneAt && nowMs - previousLastSceneAt < sceneCooldownMs
       ? Math.max(0, sceneCooldownMs - (nowMs - previousLastSceneAt))
       : 0;
-  const socialCooldownMs = options.socialPulseCooldownMinutes * 60_000;
+  const randomValue = Number(Math.random().toFixed(4));
+  const socialPulseResponse = await requestJson(loaded.config.hubUrl, '/api/v1/social-pulse/me', {
+    token,
+  });
+  const socialPolicy = socialPulseResponse?.data?.meta?.policy ?? null;
+  const socialPolicyState = socialPulseResponse?.data?.meta?.policyState ?? null;
+  const effectiveSocialPulseCooldownMinutes =
+    typeof socialPolicy?.publicExpressionCooldownMinutes === 'number'
+      ? socialPolicy.publicExpressionCooldownMinutes
+      : options.socialPulseCooldownMinutes;
+  const effectiveDirectMessageCooldownMinutes =
+    typeof socialPolicy?.directMessageCooldownMinutes === 'number'
+      ? socialPolicy.directMessageCooldownMinutes
+      : options.socialPulseDmCooldownMinutes;
+  const effectiveDirectMessageTargetCooldownMinutes =
+    typeof socialPolicy?.directMessageTargetCooldownMinutes === 'number'
+      ? socialPolicy.directMessageTargetCooldownMinutes
+      : options.socialPulseDmTargetCooldownMinutes;
+  const socialCooldownMs = effectiveSocialPulseCooldownMinutes * 60_000;
   const remainingSocialCooldownMs =
     previousLastPublicExpressionAt && nowMs - previousLastPublicExpressionAt < socialCooldownMs
       ? Math.max(0, socialCooldownMs - (nowMs - previousLastPublicExpressionAt))
       : 0;
-  const directMessageCooldownMs = options.socialPulseDmCooldownMinutes * 60_000;
+  const directMessageCooldownMs = effectiveDirectMessageCooldownMinutes * 60_000;
   const remainingDirectMessageCooldownMs =
     previousLastDirectMessageAt && nowMs - previousLastDirectMessageAt < directMessageCooldownMs
       ? Math.max(0, directMessageCooldownMs - (nowMs - previousLastDirectMessageAt))
       : 0;
-  const directMessageTargetCooldownMs = options.socialPulseDmTargetCooldownMinutes * 60_000;
-  const randomValue = Number(Math.random().toFixed(4));
-  const schedule = evaluateQuietHours(options.quietHours, options.timeZone);
-  const socialPulseResponse = await requestJson(loaded.config.hubUrl, '/api/v1/social-pulse/me', {
-    token,
-  });
+  const directMessageTargetCooldownMs = effectiveDirectMessageTargetCooldownMinutes * 60_000;
+  const policyQuietHours = socialPolicy?.quietHours
+    ? {
+        raw: `${socialPolicy.quietHours.startTime}-${socialPolicy.quietHours.endTime}`,
+        startMinutes: parseClockMinutes(socialPolicy.quietHours.startTime, 'social pulse policy quiet-hours start'),
+        endMinutes: parseClockMinutes(socialPolicy.quietHours.endTime, 'social pulse policy quiet-hours end'),
+      }
+    : null;
+  const localSchedule = evaluateQuietHours(options.quietHours, options.timeZone);
+  const schedule = policyQuietHours
+    ? socialPolicyState
+      ? {
+          active: socialPolicyState.quietHoursActive === true,
+          localClock: socialPolicyState.quietHoursLocalClock ?? localSchedule.localClock,
+          timeZone: socialPolicyState.quietHoursTimeZone ?? socialPolicy.quietHours.timeZone,
+          window: policyQuietHours.raw,
+        }
+      : evaluateQuietHours(policyQuietHours, socialPolicy.quietHours.timeZone)
+    : localSchedule;
   const socialDecision = socialPulseResponse?.data?.item ?? null;
   const publicExpressionPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
   const directMessagePlan = socialDecision?.decision?.directMessagePlan ?? null;
@@ -515,6 +552,8 @@ async function main() {
     generatedMessage: null,
     plan: publicExpressionPlan ?? directMessagePlan,
     planKind: publicExpressionPlan ? 'public_expression' : directMessagePlan ? 'direct_message' : null,
+    policy: socialPolicy,
+    policyState: socialPolicyState,
     reason: 'none',
     remainingCooldownMs:
       socialDecision?.decision?.action === 'public_expression' ? remainingSocialCooldownMs : remainingDirectMessageCooldownMs,
