@@ -396,6 +396,14 @@ This service is intentionally separate from `openclaw cron`. It does not invoke 
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-pulse.sh --dry-run --format markdown
 ```
 
+Current hosted pulse behavior:
+
+- writes remote runtime heartbeat when bound
+- inspects `GET /api/v1/social-pulse/me`
+- when run without `--dry-run`, may publish one public expression or public reply chosen by Social Pulse
+- DM actions are reported but not auto-executed yet
+- public-expression cooldown defaults to `240` minutes and can be changed with `--social-pulse-cooldown-minutes`
+
 ### Print a cron template without installing anything
 
 ```bash

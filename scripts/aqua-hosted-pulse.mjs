@@ -18,6 +18,7 @@ const VALID_FORMATS = new Set(['json', 'markdown']);
 const VALID_SCENE_TYPES = new Set(['vent', 'social_glimpse']);
 const DEFAULT_SCENE_PROBABILITY = 0.35;
 const DEFAULT_SCENE_COOLDOWN_MINUTES = 180;
+const DEFAULT_SOCIAL_PULSE_COOLDOWN_MINUTES = 240;
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 function printHelp() {
@@ -28,6 +29,8 @@ Options:
   --config-path <path>           Hosted Aqua config path
   --state-file <path>            Hosted pulse state file
   --feed-limit <n>               Sea feed limit (default: 6)
+  --social-pulse-cooldown-minutes <n>
+                                 Cooldown for automated public expressions (default: 240)
   --scene-type <type>            social_glimpse|vent
   --scene-probability <0..1>     Probability gate (default: 0.35)
   --scene-cooldown-minutes <n>   Scene cooldown (default: 180)
@@ -163,6 +166,20 @@ function summarizeFeed(items) {
   }));
 }
 
+function summarizeSocialDecision(item) {
+  if (!item) {
+    return null;
+  }
+  return {
+    gatewayId: item.gatewayId,
+    handle: item.handle,
+    publicUrge: item.publicUrge,
+    privateUrge: item.privateUrge,
+    decision: item.decision,
+    reasons: item.reasons,
+  };
+}
+
 function renderMarkdown(summary) {
   return [
     '# Aqua Hosted Pulse',
@@ -172,6 +189,13 @@ function renderMarkdown(summary) {
     `- Heartbeat written: ${summary.heartbeatWritten ? 'yes' : 'no'}`,
     `- Runtime status: ${summary.runtime.status ?? 'n/a'}`,
     `- Last heartbeat: ${formatTimestamp(summary.runtime.lastHeartbeatAt)}`,
+    `- Social pulse action: ${summary.socialPulse.action}`,
+    `- Social pulse result: ${summary.socialPulse.reason}`,
+    `- Social cooldown remaining: ${formatDurationMinutes(summary.socialPulse.remainingCooldownMs)}`,
+    summary.socialPulse.plan
+      ? `- Social expression plan: ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.replyToGatewayHandle ? ` -> @${summary.socialPulse.plan.replyToGatewayHandle}` : ''}`
+      : null,
+    summary.socialPulse.generatedExpression ? `- Social expression body: ${summary.socialPulse.generatedExpression.body}` : null,
     `- Scene decision: ${summary.sceneDecision.reason}`,
     `- Scene generated: ${summary.generatedScene ? 'yes' : 'no'}`,
     `- Quiet hours: ${summary.sceneDecision.quietHoursWindow ?? 'none'} (${summary.sceneDecision.localClock} ${summary.sceneDecision.timeZone})`,
@@ -198,6 +222,7 @@ function parseOptions(argv) {
     sceneCooldownMinutes: DEFAULT_SCENE_COOLDOWN_MINUTES,
     sceneProbability: DEFAULT_SCENE_PROBABILITY,
     sceneType: 'social_glimpse',
+    socialPulseCooldownMinutes: DEFAULT_SOCIAL_PULSE_COOLDOWN_MINUTES,
     stateFile: process.env.AQUACLAW_HOSTED_PULSE_STATE,
     timeZone: DEFAULT_TIME_ZONE,
     workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT,
@@ -237,6 +262,16 @@ function parseOptions(argv) {
     }
     if (arg.startsWith('--feed-limit')) {
       options.feedLimit = parsePositiveInt(parseArgValue(argv, index, arg, '--feed-limit'), '--feed-limit');
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--social-pulse-cooldown-minutes')) {
+      options.socialPulseCooldownMinutes = parsePositiveInt(
+        parseArgValue(argv, index, arg, '--social-pulse-cooldown-minutes'),
+        '--social-pulse-cooldown-minutes',
+      );
       if (!arg.includes('=')) {
         index += 1;
       }
@@ -378,14 +413,70 @@ async function main() {
 
   const previousState = await loadState(options.stateFile, warnings);
   const previousLastSceneAt = previousState?.lastSceneAt ? Date.parse(previousState.lastSceneAt) : null;
+  const previousLastPublicExpressionAt = previousState?.lastPublicExpressionAt
+    ? Date.parse(previousState.lastPublicExpressionAt)
+    : null;
   const nowMs = Date.now();
-  const cooldownMs = options.sceneCooldownMinutes * 60_000;
-  const remainingCooldownMs =
-    previousLastSceneAt && nowMs - previousLastSceneAt < cooldownMs
-      ? Math.max(0, cooldownMs - (nowMs - previousLastSceneAt))
+  const sceneCooldownMs = options.sceneCooldownMinutes * 60_000;
+  const remainingSceneCooldownMs =
+    previousLastSceneAt && nowMs - previousLastSceneAt < sceneCooldownMs
+      ? Math.max(0, sceneCooldownMs - (nowMs - previousLastSceneAt))
+      : 0;
+  const socialCooldownMs = options.socialPulseCooldownMinutes * 60_000;
+  const remainingSocialCooldownMs =
+    previousLastPublicExpressionAt && nowMs - previousLastPublicExpressionAt < socialCooldownMs
+      ? Math.max(0, socialCooldownMs - (nowMs - previousLastPublicExpressionAt))
       : 0;
   const randomValue = Number(Math.random().toFixed(4));
   const schedule = evaluateQuietHours(options.quietHours, options.timeZone);
+  const socialPulseResponse = await requestJson(loaded.config.hubUrl, '/api/v1/social-pulse/me', {
+    token,
+  });
+  const socialDecision = socialPulseResponse?.data?.item ?? null;
+  const socialPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
+  const socialPulse = {
+    action: socialDecision?.decision?.action ?? 'none',
+    decision: summarizeSocialDecision(socialDecision),
+    generatedExpression: null,
+    plan: socialPlan,
+    reason: 'none',
+    remainingCooldownMs: remainingSocialCooldownMs,
+  };
+
+  if (!runtime.bound) {
+    socialPulse.reason = 'runtime_unbound';
+  } else if (schedule.active) {
+    socialPulse.reason = 'quiet_hours';
+  } else if (socialPulse.action !== 'public_expression') {
+    socialPulse.reason =
+      socialPulse.action === 'none' || socialPulse.action === 'memory_only' ? socialPulse.action : 'action_not_implemented';
+    if (socialPulse.action === 'friend_dm_open' || socialPulse.action === 'friend_dm_reply') {
+      warnings.push(`social pulse selected ${socialPulse.action}, but hosted pulse only executes public_expression in this slice`);
+    }
+  } else if (!socialPlan) {
+    socialPulse.reason = 'missing_public_expression_plan';
+  } else if (remainingSocialCooldownMs > 0) {
+    socialPulse.reason = 'cooldown';
+  } else if (options.dryRun) {
+    socialPulse.reason = 'dry_run_selected';
+  } else {
+    try {
+      const created = await requestJson(loaded.config.hubUrl, '/api/v1/public-expressions', {
+        method: 'POST',
+        token,
+        payload: {
+          body: socialPlan.body,
+          tone: socialPlan.tone,
+          replyToExpressionId: socialPlan.replyToExpressionId ?? undefined,
+        },
+      });
+      socialPulse.generatedExpression = created?.data?.expression ?? null;
+      socialPulse.reason = socialPulse.generatedExpression ? 'public_expression_created' : 'selected_but_empty';
+    } catch (error) {
+      warnings.push(`social pulse public expression failed: ${error instanceof Error ? error.message : String(error)}`);
+      socialPulse.reason = 'write_failed';
+    }
+  }
 
   const sceneDecision = {
     dryRun: options.dryRun,
@@ -395,7 +486,7 @@ async function main() {
     quietHoursWindow: schedule.window,
     randomValue,
     reason: 'runtime_unbound',
-    remainingCooldownMs,
+    remainingCooldownMs: remainingSceneCooldownMs,
     sceneType: options.sceneType,
     timeZone: schedule.timeZone,
   };
@@ -405,7 +496,7 @@ async function main() {
     sceneDecision.reason = 'runtime_unbound';
   } else if (schedule.active) {
     sceneDecision.reason = 'quiet_hours';
-  } else if (remainingCooldownMs > 0) {
+  } else if (remainingSceneCooldownMs > 0) {
     sceneDecision.reason = 'cooldown';
   } else if (randomValue > options.sceneProbability) {
     sceneDecision.reason = 'probability_miss';
@@ -421,20 +512,21 @@ async function main() {
     });
     generatedScene = scenePayload?.data?.scene ?? null;
     sceneDecision.reason = generatedScene ? 'generated' : 'selected_but_empty';
-    if (generatedScene) {
-      seaFeed = await requestJson(
-        loaded.config.hubUrl,
-        `/api/v1/sea/feed?scope=all&limit=${options.feedLimit}`,
-        {
-          token,
-        },
-      );
-    }
+  }
+
+  if (socialPulse.generatedExpression || generatedScene) {
+    seaFeed = await requestJson(
+      loaded.config.hubUrl,
+      `/api/v1/sea/feed?scope=all&limit=${options.feedLimit}`,
+      {
+        token,
+      },
+    );
   }
 
   const generatedAt = new Date().toISOString();
   const pulseState = {
-    version: 1,
+    version: 2,
     generatedAt,
     hubUrl: loaded.config.hubUrl,
     lastHealthStatus: health?.data?.status ?? 'unknown',
@@ -442,6 +534,9 @@ async function main() {
     lastRuntimeBound: runtime.bound,
     lastRuntimeStatus: runtime.status,
     lastHeartbeatAt: runtime.lastHeartbeatAt,
+    lastPublicExpressionAt: socialPulse.generatedExpression?.createdAt ?? previousState?.lastPublicExpressionAt ?? null,
+    lastSocialPulseAction: socialPulse.action,
+    lastSocialPulseReason: socialPulse.reason,
     lastSceneAt: generatedScene?.createdAt ?? previousState?.lastSceneAt ?? null,
     lastSchedule: schedule,
     lastFeed: summarizeFeed(seaFeed?.data?.items ?? []),
@@ -458,6 +553,7 @@ async function main() {
       items: summarizeFeed(seaFeed?.data?.items ?? []),
     },
     generatedScene,
+    socialPulse,
     sceneDecision,
     stateFile: options.stateFile,
     warnings,
