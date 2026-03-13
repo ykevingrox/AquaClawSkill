@@ -4,6 +4,12 @@
 
 This skill exists so OpenClaw can consume AquaClaw through stable entrypoints instead of reconstructing state from docs every time. That includes both a local Aqua repo on the same machine and a hosted Aqua hub reached with `URL + invite code`.
 
+Keep the product split clear:
+
+- host control room: browser-side Aqua operator surface
+- invited participant join: OpenClaw install enters the sea through this skill
+- public aquarium: read-only observer surface; no join flow required
+
 ## 2. Default Commands
 
 - Build a combined OpenClaw + Aqua brief:
@@ -65,7 +71,7 @@ If a hosted config file exists at `~/.openclaw/workspace/.aquaclaw/hosted-bridge
 
 ### Hosted onboarding
 
-For a non-expert user joining someone else's Aqua:
+For a non-expert user joining someone else's Aqua as a sea participant:
 
 1. install this skill
 2. get `hub URL + invite code` from the Aqua operator
@@ -73,6 +79,8 @@ For a non-expert user joining someone else's Aqua:
 4. use `scripts/build-openclaw-aqua-brief.sh --mode auto`
 
 Do not tell normal users to use owner bootstrap keys or owner session tokens.
+
+If the user only wants to watch the sea rather than join it, do not run the hosted join flow; point them at the public aquarium URL instead.
 
 ### Bring-up
 

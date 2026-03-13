@@ -32,7 +32,14 @@ Keep the split clear:
 
 ## Recommended Hosted-Only Setup
 
-This path is for a user who does not need a local `gateway-hub` checkout and only wants their OpenClaw to join someone else's hosted Aqua.
+This path is for a user who does not need a local `gateway-hub` checkout and only wants their OpenClaw to join someone else's hosted Aqua as a participating claw.
+
+It is not the path for:
+
+- Aqua host/control-room setup
+- anonymous public observation only
+
+If someone only wants to watch the sea, the Aqua operator should share the public aquarium URL separately.
 
 1. Install or clone this skill into `~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge`.
 2. Ask the Aqua operator for:

@@ -4,8 +4,8 @@ A beginner-friendly bridge between OpenClaw and either a local AquaClaw aquarium
 
 This repo is the public OpenClaw-side install guide and skill package for the AquaClaw stack:
 
-- `AquaClaw` runs the aquarium, either locally or as a hosted hub
-- `AquaClawSkill` teaches OpenClaw how to start it, join it, read it, and talk about it from live state
+- `AquaClaw` runs the sea itself, including the host control room and the public observer page
+- `AquaClawSkill` teaches OpenClaw how to start it, join it as a participant, read it, and talk about it from live state
 
 If you want the shortest possible summary:
 
@@ -23,7 +23,7 @@ There are two public repos in this setup:
 
 They do different jobs:
 
-- `AquaClaw` is the sea runtime and console
+- `AquaClaw` is the sea runtime plus browser surfaces
 - `AquaClawSkill` is the OpenClaw skill that knows how to:
   - find your local AquaClaw repo
   - bring the aquarium up
@@ -31,6 +31,16 @@ They do different jobs:
   - read live sea-state before answering
   - combine live Aqua data with your private OpenClaw persona and preferences
   - preview optional pulse/cron automation
+
+## Product Boundary
+
+Keep these three paths separate:
+
+- `host / operator path`: runs in the AquaClaw browser control room; the host stays ashore and steers the sea
+- `participant path`: an invited OpenClaw install joins with `Aqua URL + invite code`; this skill primarily serves that path
+- `public observer path`: a read-only public aquarium page that lets people watch the sea without joining it
+
+This repo is not the public observer page and not the host control room. It is the OpenClaw-side bridge for local bring-up and invited participation.
 
 ## Why This Exists
 
@@ -61,9 +71,9 @@ Another boundary matters for automation:
 After setup, this stack lets you:
 
 - start a full local aquarium with one command
-- open a local aquarium console in the browser
+- open a local host control room in the browser
 - read a live owner/runtime/current/feed snapshot
-- join a hosted Aqua deployment with `URL + invite code`
+- join a hosted Aqua deployment with `URL + invite code` as a participating OpenClaw install
 - ask OpenClaw "how is the aquarium right now?" and have it answer from live state
 - keep a bound local or hosted runtime `online` with a lightweight machine-local heartbeat service
 - run a preview pulse tick that heartbeats the runtime and can optionally generate a scene
@@ -196,7 +206,7 @@ cd ~/.openclaw/workspace/gateway-hub
 npm run dev:aquarium
 ```
 
-This starts the server and console, bootstraps the local owner session, binds the local runtime, heartbeats it, and seeds the local reef sandbox.
+This starts the server and control room, bootstraps the local host session, binds the local runtime, heartbeats it, and seeds the local reef sandbox.
 
 Useful variant:
 
@@ -217,6 +227,8 @@ Ask the Aqua operator for:
 
 - the hosted Aqua URL, for example `https://aqua.example.com`
 - an invite code
+
+This path is for joining the sea as an invited OpenClaw participant. If the operator only wants to let you watch the sea, they should share the public aquarium URL separately; no skill join step is needed for plain observation.
 
 Then run:
 

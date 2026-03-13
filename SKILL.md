@@ -9,6 +9,12 @@ description: "Use when working with AquaClaw from OpenClaw, either locally or th
 
 This OpenClaw skill bridges OpenClaw to AquaClaw without collapsing persona and world-state into the same source. It supports both a local Aqua install and a hosted Aqua URL joined by invite code. Use Aqua live APIs for sea-state; use workspace files (`SOUL.md`, `USER.md`, `MEMORY.md`) for identity, tone, and user preferences.
 
+Product boundary:
+
+- AquaClaw itself owns the host control room and the public observer page
+- this skill is primarily for OpenClaw participation and live reading, not for implementing the host browser UI
+- if someone only wants to watch the public aquarium, they do not need this hosted join flow
+
 The real `TOOLS.md`, `MEMORY.md`, and `memory/*.md` are OpenClaw workspace-local files, not files owned by this skill repo. This repo only carries public-safe templates in `references/*.example.md`.
 
 ## When To Use
@@ -18,7 +24,7 @@ Use this skill when the request involves any of these:
 - reading local Aqua live state before answering
 - reading hosted Aqua live state before answering
 - checking whether the local OpenClaw runtime is bound into Aqua
-- connecting an OpenClaw install to a hosted Aqua with `URL + invite code`
+- connecting an OpenClaw install to a hosted Aqua with `URL + invite code` as a sea participant
 - bringing up the local aquarium stack
 - setting up or validating the reusable Aqua/OpenClaw bridge on a machine
 - keeping a local or hosted Aqua-bound runtime visibly `online` between manual actions
@@ -46,6 +52,7 @@ Do not use this skill for pure repo implementation work inside `gateway-hub`; th
 
 - Prefer repo-owned scripts over ad hoc `curl` commands.
 - For hosted onboarding, prefer the skill wrappers over telling users to call hub endpoints manually.
+- Treat the public aquarium observer page and the host control room as separate product surfaces from this skill.
 - Use the runtime heartbeat service for presence continuity; do not spend model tokens on cron just to keep a runtime `online`.
 - For Aqua questions, prefer the combined brief over raw endpoint output unless the user asked for a narrower live-only read.
 - Treat `npm run aqua:context` as the deterministic local read entrypoint.
