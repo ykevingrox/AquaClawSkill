@@ -19,6 +19,8 @@ const VALID_SCENE_TYPES = new Set(['vent', 'social_glimpse']);
 const DEFAULT_SCENE_PROBABILITY = 0.35;
 const DEFAULT_SCENE_COOLDOWN_MINUTES = 180;
 const DEFAULT_SOCIAL_PULSE_COOLDOWN_MINUTES = 240;
+const DEFAULT_SOCIAL_PULSE_DM_COOLDOWN_MINUTES = 180;
+const DEFAULT_SOCIAL_PULSE_DM_TARGET_COOLDOWN_MINUTES = 720;
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 function printHelp() {
@@ -31,6 +33,10 @@ Options:
   --feed-limit <n>               Sea feed limit (default: 6)
   --social-pulse-cooldown-minutes <n>
                                  Cooldown for automated public expressions (default: 240)
+  --social-pulse-dm-cooldown-minutes <n>
+                                 Cooldown for automated direct messages (default: 180)
+  --social-pulse-dm-target-cooldown-minutes <n>
+                                 Minimum gap before repeating DM automation to one target (default: 720)
   --scene-type <type>            social_glimpse|vent
   --scene-probability <0..1>     Probability gate (default: 0.35)
   --scene-cooldown-minutes <n>   Scene cooldown (default: 180)
@@ -180,6 +186,28 @@ function summarizeSocialDecision(item) {
   };
 }
 
+function formatSocialPlan(summary) {
+  if (!summary.socialPulse.plan || !summary.socialPulse.planKind) {
+    return null;
+  }
+
+  if (summary.socialPulse.planKind === 'public_expression') {
+    return `- Social plan: public_expression ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.replyToGatewayHandle ? ` -> @${summary.socialPulse.plan.replyToGatewayHandle}` : ''}`;
+  }
+
+  return `- Social plan: direct_message ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.targetGatewayHandle ? ` -> @${summary.socialPulse.plan.targetGatewayHandle}` : ''}`;
+}
+
+function formatSocialOutput(summary) {
+  if (summary.socialPulse.generatedExpression) {
+    return `- Social output body: ${summary.socialPulse.generatedExpression.body}`;
+  }
+  if (summary.socialPulse.generatedMessage) {
+    return `- Social output body: ${summary.socialPulse.generatedMessage.body}`;
+  }
+  return null;
+}
+
 function renderMarkdown(summary) {
   return [
     '# Aqua Hosted Pulse',
@@ -192,10 +220,14 @@ function renderMarkdown(summary) {
     `- Social pulse action: ${summary.socialPulse.action}`,
     `- Social pulse result: ${summary.socialPulse.reason}`,
     `- Social cooldown remaining: ${formatDurationMinutes(summary.socialPulse.remainingCooldownMs)}`,
-    summary.socialPulse.plan
-      ? `- Social expression plan: ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.replyToGatewayHandle ? ` -> @${summary.socialPulse.plan.replyToGatewayHandle}` : ''}`
+    summary.socialPulse.planKind === 'direct_message'
+      ? `- Social target cooldown remaining: ${formatDurationMinutes(summary.socialPulse.remainingTargetCooldownMs)}`
       : null,
-    summary.socialPulse.generatedExpression ? `- Social expression body: ${summary.socialPulse.generatedExpression.body}` : null,
+    formatSocialPlan(summary),
+    summary.socialPulse.planKind === 'direct_message' && summary.socialPulse.plan?.conversationId
+      ? `- Social conversation: ${summary.socialPulse.plan.conversationId}`
+      : null,
+    formatSocialOutput(summary),
     `- Scene decision: ${summary.sceneDecision.reason}`,
     `- Scene generated: ${summary.generatedScene ? 'yes' : 'no'}`,
     `- Quiet hours: ${summary.sceneDecision.quietHoursWindow ?? 'none'} (${summary.sceneDecision.localClock} ${summary.sceneDecision.timeZone})`,
@@ -223,6 +255,8 @@ function parseOptions(argv) {
     sceneProbability: DEFAULT_SCENE_PROBABILITY,
     sceneType: 'social_glimpse',
     socialPulseCooldownMinutes: DEFAULT_SOCIAL_PULSE_COOLDOWN_MINUTES,
+    socialPulseDmCooldownMinutes: DEFAULT_SOCIAL_PULSE_DM_COOLDOWN_MINUTES,
+    socialPulseDmTargetCooldownMinutes: DEFAULT_SOCIAL_PULSE_DM_TARGET_COOLDOWN_MINUTES,
     stateFile: process.env.AQUACLAW_HOSTED_PULSE_STATE,
     timeZone: DEFAULT_TIME_ZONE,
     workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT,
@@ -271,6 +305,26 @@ function parseOptions(argv) {
       options.socialPulseCooldownMinutes = parsePositiveInt(
         parseArgValue(argv, index, arg, '--social-pulse-cooldown-minutes'),
         '--social-pulse-cooldown-minutes',
+      );
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--social-pulse-dm-cooldown-minutes')) {
+      options.socialPulseDmCooldownMinutes = parsePositiveInt(
+        parseArgValue(argv, index, arg, '--social-pulse-dm-cooldown-minutes'),
+        '--social-pulse-dm-cooldown-minutes',
+      );
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--social-pulse-dm-target-cooldown-minutes')) {
+      options.socialPulseDmTargetCooldownMinutes = parsePositiveInt(
+        parseArgValue(argv, index, arg, '--social-pulse-dm-target-cooldown-minutes'),
+        '--social-pulse-dm-target-cooldown-minutes',
       );
       if (!arg.includes('=')) {
         index += 1;
@@ -416,6 +470,11 @@ async function main() {
   const previousLastPublicExpressionAt = previousState?.lastPublicExpressionAt
     ? Date.parse(previousState.lastPublicExpressionAt)
     : null;
+  const previousLastDirectMessageAt = previousState?.lastDirectMessageAt ? Date.parse(previousState.lastDirectMessageAt) : null;
+  const previousLastDirectMessageByTarget =
+    previousState?.lastDirectMessageByTarget && typeof previousState.lastDirectMessageByTarget === 'object'
+      ? previousState.lastDirectMessageByTarget
+      : {};
   const nowMs = Date.now();
   const sceneCooldownMs = options.sceneCooldownMinutes * 60_000;
   const remainingSceneCooldownMs =
@@ -427,55 +486,107 @@ async function main() {
     previousLastPublicExpressionAt && nowMs - previousLastPublicExpressionAt < socialCooldownMs
       ? Math.max(0, socialCooldownMs - (nowMs - previousLastPublicExpressionAt))
       : 0;
+  const directMessageCooldownMs = options.socialPulseDmCooldownMinutes * 60_000;
+  const remainingDirectMessageCooldownMs =
+    previousLastDirectMessageAt && nowMs - previousLastDirectMessageAt < directMessageCooldownMs
+      ? Math.max(0, directMessageCooldownMs - (nowMs - previousLastDirectMessageAt))
+      : 0;
+  const directMessageTargetCooldownMs = options.socialPulseDmTargetCooldownMinutes * 60_000;
   const randomValue = Number(Math.random().toFixed(4));
   const schedule = evaluateQuietHours(options.quietHours, options.timeZone);
   const socialPulseResponse = await requestJson(loaded.config.hubUrl, '/api/v1/social-pulse/me', {
     token,
   });
   const socialDecision = socialPulseResponse?.data?.item ?? null;
-  const socialPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
+  const publicExpressionPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
+  const directMessagePlan = socialDecision?.decision?.directMessagePlan ?? null;
+  const directMessageTargetLastAt =
+    directMessagePlan?.targetGatewayId && previousLastDirectMessageByTarget[directMessagePlan.targetGatewayId]
+      ? Date.parse(previousLastDirectMessageByTarget[directMessagePlan.targetGatewayId])
+      : null;
+  const remainingDirectMessageTargetCooldownMs =
+    directMessageTargetLastAt && nowMs - directMessageTargetLastAt < directMessageTargetCooldownMs
+      ? Math.max(0, directMessageTargetCooldownMs - (nowMs - directMessageTargetLastAt))
+      : 0;
   const socialPulse = {
     action: socialDecision?.decision?.action ?? 'none',
     decision: summarizeSocialDecision(socialDecision),
     generatedExpression: null,
-    plan: socialPlan,
+    generatedMessage: null,
+    plan: publicExpressionPlan ?? directMessagePlan,
+    planKind: publicExpressionPlan ? 'public_expression' : directMessagePlan ? 'direct_message' : null,
     reason: 'none',
-    remainingCooldownMs: remainingSocialCooldownMs,
+    remainingCooldownMs:
+      socialDecision?.decision?.action === 'public_expression' ? remainingSocialCooldownMs : remainingDirectMessageCooldownMs,
+    remainingTargetCooldownMs:
+      socialDecision?.decision?.action === 'friend_dm_open' || socialDecision?.decision?.action === 'friend_dm_reply'
+        ? remainingDirectMessageTargetCooldownMs
+        : 0,
   };
 
   if (!runtime.bound) {
     socialPulse.reason = 'runtime_unbound';
   } else if (schedule.active) {
     socialPulse.reason = 'quiet_hours';
-  } else if (socialPulse.action !== 'public_expression') {
+  } else if (socialPulse.action === 'none' || socialPulse.action === 'memory_only') {
+    socialPulse.reason = socialPulse.action;
+  } else if (socialPulse.action === 'public_expression') {
+    if (!publicExpressionPlan) {
+      socialPulse.reason = 'missing_public_expression_plan';
+    } else if (remainingSocialCooldownMs > 0) {
+      socialPulse.reason = 'cooldown';
+    } else if (options.dryRun) {
+      socialPulse.reason = 'dry_run_selected';
+    } else {
+      try {
+        const created = await requestJson(loaded.config.hubUrl, '/api/v1/public-expressions', {
+          method: 'POST',
+          token,
+          payload: {
+            body: publicExpressionPlan.body,
+            tone: publicExpressionPlan.tone,
+            replyToExpressionId: publicExpressionPlan.replyToExpressionId ?? undefined,
+          },
+        });
+        socialPulse.generatedExpression = created?.data?.expression ?? null;
+        socialPulse.reason = socialPulse.generatedExpression ? 'public_expression_created' : 'selected_but_empty';
+      } catch (error) {
+        warnings.push(`social pulse public expression failed: ${error instanceof Error ? error.message : String(error)}`);
+        socialPulse.reason = 'write_failed';
+      }
+    }
+  } else if (socialPulse.action === 'friend_dm_open' || socialPulse.action === 'friend_dm_reply') {
+    if (!directMessagePlan) {
+      socialPulse.reason = 'missing_direct_message_plan';
+    } else if (remainingDirectMessageCooldownMs > 0) {
+      socialPulse.reason = 'dm_cooldown';
+    } else if (remainingDirectMessageTargetCooldownMs > 0) {
+      socialPulse.reason = 'dm_target_cooldown';
+    } else if (options.dryRun) {
+      socialPulse.reason = 'dry_run_selected';
+    } else {
+      try {
+        const created = await requestJson(
+          loaded.config.hubUrl,
+          `/api/v1/conversations/${directMessagePlan.conversationId}/messages`,
+          {
+            method: 'POST',
+            token,
+            payload: {
+              body: directMessagePlan.body,
+            },
+          },
+        );
+        socialPulse.generatedMessage = created?.data?.message ?? null;
+        socialPulse.reason = socialPulse.generatedMessage ? 'direct_message_sent' : 'selected_but_empty';
+      } catch (error) {
+        warnings.push(`social pulse direct message failed: ${error instanceof Error ? error.message : String(error)}`);
+        socialPulse.reason = 'write_failed';
+      }
+    }
+  } else {
     socialPulse.reason =
       socialPulse.action === 'none' || socialPulse.action === 'memory_only' ? socialPulse.action : 'action_not_implemented';
-    if (socialPulse.action === 'friend_dm_open' || socialPulse.action === 'friend_dm_reply') {
-      warnings.push(`social pulse selected ${socialPulse.action}, but hosted pulse only executes public_expression in this slice`);
-    }
-  } else if (!socialPlan) {
-    socialPulse.reason = 'missing_public_expression_plan';
-  } else if (remainingSocialCooldownMs > 0) {
-    socialPulse.reason = 'cooldown';
-  } else if (options.dryRun) {
-    socialPulse.reason = 'dry_run_selected';
-  } else {
-    try {
-      const created = await requestJson(loaded.config.hubUrl, '/api/v1/public-expressions', {
-        method: 'POST',
-        token,
-        payload: {
-          body: socialPlan.body,
-          tone: socialPlan.tone,
-          replyToExpressionId: socialPlan.replyToExpressionId ?? undefined,
-        },
-      });
-      socialPulse.generatedExpression = created?.data?.expression ?? null;
-      socialPulse.reason = socialPulse.generatedExpression ? 'public_expression_created' : 'selected_but_empty';
-    } catch (error) {
-      warnings.push(`social pulse public expression failed: ${error instanceof Error ? error.message : String(error)}`);
-      socialPulse.reason = 'write_failed';
-    }
   }
 
   const sceneDecision = {
@@ -514,7 +625,7 @@ async function main() {
     sceneDecision.reason = generatedScene ? 'generated' : 'selected_but_empty';
   }
 
-  if (socialPulse.generatedExpression || generatedScene) {
+  if (socialPulse.generatedExpression || socialPulse.generatedMessage || generatedScene) {
     seaFeed = await requestJson(
       loaded.config.hubUrl,
       `/api/v1/sea/feed?scope=all&limit=${options.feedLimit}`,
@@ -525,8 +636,15 @@ async function main() {
   }
 
   const generatedAt = new Date().toISOString();
+  const nextLastDirectMessageByTarget =
+    socialPulse.generatedMessage && directMessagePlan?.targetGatewayId
+      ? {
+          ...previousLastDirectMessageByTarget,
+          [directMessagePlan.targetGatewayId]: socialPulse.generatedMessage.createdAt,
+        }
+      : previousLastDirectMessageByTarget;
   const pulseState = {
-    version: 2,
+    version: 3,
     generatedAt,
     hubUrl: loaded.config.hubUrl,
     lastHealthStatus: health?.data?.status ?? 'unknown',
@@ -535,6 +653,12 @@ async function main() {
     lastRuntimeStatus: runtime.status,
     lastHeartbeatAt: runtime.lastHeartbeatAt,
     lastPublicExpressionAt: socialPulse.generatedExpression?.createdAt ?? previousState?.lastPublicExpressionAt ?? null,
+    lastDirectMessageAt: socialPulse.generatedMessage?.createdAt ?? previousState?.lastDirectMessageAt ?? null,
+    lastDirectMessageTargetGatewayId:
+      directMessagePlan?.targetGatewayId && socialPulse.generatedMessage
+        ? directMessagePlan.targetGatewayId
+        : previousState?.lastDirectMessageTargetGatewayId ?? null,
+    lastDirectMessageByTarget: nextLastDirectMessageByTarget,
     lastSocialPulseAction: socialPulse.action,
     lastSocialPulseReason: socialPulse.reason,
     lastSceneAt: generatedScene?.createdAt ?? previousState?.lastSceneAt ?? null,
