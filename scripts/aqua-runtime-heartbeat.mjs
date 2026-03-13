@@ -21,7 +21,8 @@ const DEFAULT_STATE_FILE = path.join(DEFAULT_WORKSPACE_ROOT, '.aquaclaw', 'runti
 const DEFAULT_CONNECTION_TYPE = 'openclaw_runtime_heartbeat_service';
 
 const localSessionCache = {
-  gatewayId: null,
+  identityId: null,
+  identityKind: 'host',
   token: null,
 };
 
@@ -198,7 +199,8 @@ async function loadHostedTarget(config) {
 
   return {
     configPath: loaded.configPath,
-    gatewayId: loaded.config?.gateway?.id || null,
+    identityId: loaded.config?.gateway?.id || null,
+    identityKind: 'gateway',
     hubUrl: loaded.config.hubUrl,
     mode: 'hosted',
     runtimeId: loaded.config.runtime.runtimeId,
@@ -225,7 +227,8 @@ function summarizeResult(result) {
       level: 'info',
       message: 'heartbeat ok',
       extra: {
-        gatewayId: result.gatewayId,
+        identityId: result.identityId,
+        identityKind: result.identityKind,
         lastHeartbeatAt: result.lastHeartbeatAt,
         presenceStatus: result.presenceStatus,
         runtimeStatus: result.runtimeStatus,
@@ -239,7 +242,8 @@ function summarizeResult(result) {
       level: 'warn',
       message: 'local runtime is not bound yet; heartbeat skipped',
       extra: {
-        gatewayId: result.gatewayId,
+        identityId: result.identityId,
+        identityKind: result.identityKind,
       },
     };
   }
@@ -289,9 +293,12 @@ async function bootstrapLocalSession(config) {
     throw new Error('bootstrap-local returned no local session token');
   }
   localSessionCache.token = token;
-  localSessionCache.gatewayId = bootstrap?.data?.gateway?.id || localSessionCache.gatewayId || null;
+  localSessionCache.identityId =
+    bootstrap?.data?.host?.id || bootstrap?.data?.gateway?.id || localSessionCache.identityId || null;
+  localSessionCache.identityKind = bootstrap?.data?.host?.id ? 'host' : 'gateway';
   return {
-    gatewayId: localSessionCache.gatewayId,
+    identityId: localSessionCache.identityId,
+    identityKind: localSessionCache.identityKind,
     token,
   };
 }
@@ -302,14 +309,14 @@ async function withLocalSession(config, action) {
   }
 
   try {
-    return await action(localSessionCache.token, localSessionCache.gatewayId);
+    return await action(localSessionCache.token, localSessionCache.identityId, localSessionCache.identityKind);
   } catch (error) {
     if (!(error instanceof Error) || Number(error.statusCode) !== 401) {
       throw error;
     }
 
     await bootstrapLocalSession(config);
-    return action(localSessionCache.token, localSessionCache.gatewayId);
+    return action(localSessionCache.token, localSessionCache.identityId, localSessionCache.identityKind);
   }
 }
 
@@ -396,7 +403,8 @@ async function runCycle(config) {
 
       return {
         at: now,
-        gatewayId: heartbeat?.data?.gateway?.id || runtime?.data?.gateway?.id || target.gatewayId || null,
+        identityId: heartbeat?.data?.gateway?.id || runtime?.data?.gateway?.id || target.identityId || null,
+        identityKind: target.identityKind,
         hubUrl: target.hubUrl,
         kind: 'ok',
         lastHeartbeatAt:
@@ -410,7 +418,8 @@ async function runCycle(config) {
       if (error instanceof Error && Number(error.statusCode) === 404) {
         return {
           at: now,
-          gatewayId: target.gatewayId || null,
+          identityId: target.identityId || null,
+          identityKind: target.identityKind,
           hubUrl: target.hubUrl,
           kind: 'unbound',
           mode: target.mode,
@@ -442,7 +451,7 @@ async function runCycle(config) {
   }
 
   try {
-    return await withLocalSession(config, async (token, cachedGatewayId) => {
+    return await withLocalSession(config, async (token, cachedIdentityId, cachedIdentityKind) => {
       let runtime;
       try {
         runtime = await requestJson(
@@ -458,7 +467,8 @@ async function runCycle(config) {
         if (error instanceof Error && Number(error.statusCode) === 404) {
           return {
             at: now,
-            gatewayId: cachedGatewayId,
+            identityId: cachedIdentityId,
+            identityKind: cachedIdentityKind,
             hubUrl: target.hubUrl,
             kind: 'unbound',
             mode: target.mode,
@@ -494,12 +504,20 @@ async function runCycle(config) {
         config,
       );
 
-      localSessionCache.gatewayId =
-        heartbeat?.data?.gateway?.id || runtime?.data?.gateway?.id || cachedGatewayId || localSessionCache.gatewayId;
+      localSessionCache.identityId =
+        heartbeat?.data?.host?.id ||
+        runtime?.data?.host?.id ||
+        heartbeat?.data?.gateway?.id ||
+        runtime?.data?.gateway?.id ||
+        cachedIdentityId ||
+        localSessionCache.identityId;
+      localSessionCache.identityKind =
+        heartbeat?.data?.host?.id || runtime?.data?.host?.id ? 'host' : cachedIdentityKind || 'host';
 
       return {
         at: now,
-        gatewayId: localSessionCache.gatewayId,
+        identityId: localSessionCache.identityId,
+        identityKind: localSessionCache.identityKind,
         hubUrl: target.hubUrl,
         kind: 'ok',
         lastHeartbeatAt:
@@ -514,7 +532,8 @@ async function runCycle(config) {
     if (error instanceof Error && Number(error.statusCode) === 404) {
       return {
         at: now,
-        gatewayId: localSessionCache.gatewayId,
+        identityId: localSessionCache.identityId,
+        identityKind: localSessionCache.identityKind,
         hubUrl: target.hubUrl,
         kind: 'unbound',
         mode: target.mode,
