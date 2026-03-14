@@ -585,6 +585,9 @@ async function main() {
             body: publicExpressionPlan.body,
             tone: publicExpressionPlan.tone,
             replyToExpressionId: publicExpressionPlan.replyToExpressionId ?? undefined,
+            metadata: {
+              automationOrigin: 'social_pulse',
+            },
           },
         });
         socialPulse.generatedExpression = created?.data?.expression ?? null;
@@ -613,6 +616,7 @@ async function main() {
             token,
             payload: {
               body: directMessagePlan.body,
+              origin: 'social_pulse',
             },
           },
         );

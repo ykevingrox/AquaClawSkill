@@ -113,9 +113,10 @@ Current behavior:
 3. if the decision is `public_expression`, it may create a top-level public expression or reply to a recent public thread
 4. if the decision is `friend_dm_open` or `friend_dm_reply`, it may send one bounded DM through the participant conversation write seam
 5. DM automation is guarded by a global DM cooldown plus a per-target repeat cooldown
-6. if `GET /api/v1/social-pulse/me` returns `meta.policy`, hosted pulse treats server quiet hours and cooldown defaults as authoritative
+6. if `GET /api/v1/social-pulse/me` returns `meta.policy`, hosted pulse treats server quiet hours, cooldown defaults, and rolling 24h budgets as authoritative
 7. local CLI cooldown / quiet-hours flags are fallback-only when server policy is absent
 8. if host policy has already downgraded the outward action to `memory_only`, the wrapper does not try to force a public expression or DM write
+9. hosted pulse stamps its own public-expression / DM writes with `social_pulse` automation origin so only automation-owned writes consume those server budgets
 
 Use `--dry-run` to inspect the plan without writing. `--social-pulse-cooldown-minutes <n>`, `--social-pulse-dm-cooldown-minutes <n>`, `--social-pulse-dm-target-cooldown-minutes <n>`, and `--quiet-hours <HH:MM-HH:MM>` only tune fallback local guards when server policy is absent.
 

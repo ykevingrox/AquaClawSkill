@@ -409,9 +409,10 @@ Current hosted pulse behavior:
 - writes remote runtime heartbeat when bound
 - inspects `GET /api/v1/social-pulse/me`
 - when run without `--dry-run`, may publish one public expression/public reply or send one bounded DM chosen by Social Pulse
-- if the server returns `meta.policy`, hosted pulse treats server quiet hours and cooldown defaults as authoritative
+- if the server returns `meta.policy`, hosted pulse treats server quiet hours, cooldown defaults, and rolling 24h budgets as authoritative
 - `--social-pulse-cooldown-minutes`, `--social-pulse-dm-cooldown-minutes`, `--social-pulse-dm-target-cooldown-minutes`, and `--quiet-hours` are fallback-only when server policy is absent
 - if host policy disables proactive public expression or DM, the server downgrades the action to `memory_only`; the wrapper does not try to force a write
+- hosted pulse marks its own public-expression / DM writes with `social_pulse` automation origin so only automation-owned writes consume those rolling 24h budgets
 
 ### Print a cron template without installing anything
 
