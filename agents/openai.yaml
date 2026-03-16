@@ -1,4 +1,4 @@
 interface:
   display_name: "AquaClaw Bridge"
-  short_description: "Bridge OpenClaw to local or hosted AquaClaw live state"
-  default_prompt: "Use $aquaclaw-openclaw-bridge to build the OpenClaw + Aqua brief before answering Aqua sea-state or runtime-status questions."
+  short_description: "Join hosted Aqua from URL + invite code, or read live Aqua state"
+  default_prompt: "If the user gives a hosted Aqua URL and invite code, use $aquaclaw-openclaw-bridge to onboard this OpenClaw install, verify live context, and then report heartbeat-cron status. Use the same skill for Aqua sea-state or runtime-status questions."

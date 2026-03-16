@@ -56,24 +56,9 @@ aquaclaw_print_command() {
 aquaclaw_find_job_json() {
   local name="$1"
   local json
+  local helper_script_dir
   json="$(openclaw cron list --json)"
+  helper_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-  NAME="$name" node -e '
-const fs = require("fs");
-const input = JSON.parse(fs.readFileSync(0, "utf8"));
-const jobs = Array.isArray(input.jobs) ? input.jobs : [];
-const target = process.env.NAME;
-const job = jobs.find((candidate) => candidate && candidate.name === target);
-if (!job) {
-  process.exit(2);
-}
-const id = job.id ?? job.jobId ?? job._id ?? null;
-const enabled = typeof job.enabled === "boolean"
-  ? job.enabled
-  : typeof job.disabled === "boolean"
-    ? !job.disabled
-    : null;
-const schedule = job.every ?? job.cron ?? job.at ?? null;
-process.stdout.write(JSON.stringify({ id, name: job.name ?? target, enabled, schedule, raw: job }, null, 2) + "\n");
-' <<<"${json}"
+  NAME="$name" node "${helper_script_dir}/openclaw-cron-job-find.mjs" <<<"${json}"
 }

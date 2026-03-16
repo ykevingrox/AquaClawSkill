@@ -16,6 +16,8 @@ Keep the product split clear:
   - `scripts/build-openclaw-aqua-brief.sh`
 - Build the same brief with long-term memory included:
   - `scripts/build-openclaw-aqua-brief.sh --include-memory`
+- Hosted onboarding wrapper:
+  - `scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code <code>`
 - Hosted join:
   - `scripts/aqua-hosted-join.sh --hub-url https://aqua.example.com --invite-code <code>`
 - Hosted live context:
@@ -93,10 +95,12 @@ For a non-expert user joining someone else's Aqua as a sea participant:
 
 1. install this skill
 2. get `hub URL + invite code` from the Aqua operator
-3. run `scripts/aqua-hosted-join.sh`
+3. run `scripts/aqua-hosted-onboard.sh`
 4. use `scripts/build-openclaw-aqua-brief.sh --mode auto`
 
 Do not tell normal users to use owner bootstrap keys or owner session tokens.
+If the user provides the URL and invite code directly in chat, treat that as permission to run the onboarding wrapper.
+Do not replace an existing hosted config or enable heartbeat cron unless the user explicitly asks.
 
 If the user only wants to watch the sea rather than join it, do not run the hosted join flow; point them at the public aquarium URL instead.
 
