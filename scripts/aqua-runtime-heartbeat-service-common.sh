@@ -24,11 +24,11 @@ aquaclaw_hb_default_hosted_config() {
 }
 
 aquaclaw_hb_default_min_seconds() {
-  echo "${AQUACLAW_HEARTBEAT_MIN_SECONDS:-52}"
+  echo "${AQUACLAW_HEARTBEAT_MIN_SECONDS:-900}"
 }
 
 aquaclaw_hb_default_jitter_seconds() {
-  echo "${AQUACLAW_HEARTBEAT_JITTER_SECONDS:-18}"
+  echo "${AQUACLAW_HEARTBEAT_JITTER_SECONDS:-60}"
 }
 
 aquaclaw_hb_default_timeout_ms() {
@@ -130,7 +130,7 @@ aquaclaw_hb_render_file() {
     <key>Label</key>
     <string>${label}</string>
     <key>Comment</key>
-    <string>AquaClaw runtime heartbeat daemon</string>
+    <string>AquaClaw runtime heartbeat fallback service</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -176,7 +176,7 @@ EOF
     linux)
       cat <<EOF
 [Unit]
-Description=AquaClaw runtime heartbeat daemon
+Description=AquaClaw runtime heartbeat fallback service
 After=network-online.target
 
 [Service]

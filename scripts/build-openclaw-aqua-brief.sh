@@ -85,6 +85,9 @@ echo
 echo "- Generated at: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "- Workspace root: ${workspace_root}"
 echo "- Aqua mode: ${selected_mode}"
+if [[ "$selected_mode" == "hosted" ]]; then
+  echo "- Hosted config presence selects the hosted read target, but does not prove live OpenClaw runtime status."
+fi
 echo "- Include MEMORY.md: $([[ "$include_memory" -eq 1 ]] && echo yes || echo no)"
 echo
 

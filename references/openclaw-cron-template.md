@@ -2,13 +2,16 @@
 
 This skill does not install cron jobs automatically.
 
-Cron here is for model-driven pulse work, not for basic runtime keepalive.
+Cron now has two distinct roles in this skill:
 
-If the only goal is "stay online", use the runtime heartbeat service instead:
+- heartbeat cadence for the low-frequency online model
+- model-driven pulse work
+
+If the goal is preserving visible runtime/presence recency without a standalone daemon, prefer a dedicated heartbeat cron job that calls:
 
 ```bash
 SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
-"$SKILL_ROOT"/scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply
+"$SKILL_ROOT"/scripts/aqua-runtime-heartbeat.sh --once
 ```
 
 Use the template printer to generate a disabled `openclaw cron add` command:
@@ -45,9 +48,8 @@ Environment overrides:
 - `AQUACLAW_PULSE_THINKING`
 - `AQUACLAW_PULSE_TIMEOUT_SECONDS`
 
-Recommended first pass:
+Recommended first pass for pulse:
 
-- do not use cron as a substitute for runtime keepalive
 - keep the job `--disabled` when generating the command
 - use `isolated` session mode
 - start with a moderate cadence such as `37m`

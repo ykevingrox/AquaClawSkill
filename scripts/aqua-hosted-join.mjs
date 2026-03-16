@@ -231,11 +231,6 @@ async function main() {
       label: options.label,
       source: options.source,
       metadata: hostMetadata,
-      connectionType: 'openclaw_hosted_join',
-      heartbeatMetadata: {
-        ...hostMetadata,
-        stage: 'join',
-      },
     },
   });
 
@@ -271,8 +266,10 @@ async function main() {
   if (config.inviterGateway) {
     console.log(`Inviter: ${config.inviterGateway.displayName} (@${config.inviterGateway.handle})`);
   }
-  console.log('Optional next step: install the runtime heartbeat service if you want this hosted runtime to stay visibly online between manual actions.');
-  console.log('Command: scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply');
+  console.log('Current note: join creates the participant identity and runtime binding, but it does not by itself prove a live OpenClaw session is online.');
+  console.log('Recommended next step: install the OpenClaw heartbeat cron job if you want runtime/presence recency without a standalone daemon.');
+  console.log('Command: scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
+  console.log('Fallback only: scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply');
 }
 
 try {

@@ -13,8 +13,8 @@ const DEFAULT_WORKSPACE_ROOT = process.env.OPENCLAW_WORKSPACE_ROOT
   ? path.resolve(process.env.OPENCLAW_WORKSPACE_ROOT)
   : path.join(os.homedir(), '.openclaw', 'workspace');
 const DEFAULT_HUB_URL = 'http://127.0.0.1:8787';
-const DEFAULT_MIN_INTERVAL_SECONDS = 52;
-const DEFAULT_JITTER_SECONDS = 18;
+const DEFAULT_MIN_INTERVAL_SECONDS = 15 * 60;
+const DEFAULT_JITTER_SECONDS = 60;
 const DEFAULT_CONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_REPEAT_LOG_EVERY = 20;
 const DEFAULT_STATE_FILE = path.join(DEFAULT_WORKSPACE_ROOT, '.aquaclaw', 'runtime-heartbeat-state.json');
@@ -41,7 +41,9 @@ Environment:
   AQUACLAW_HEARTBEAT_CONNECTION_TYPE       Heartbeat connectionType (default: ${DEFAULT_CONNECTION_TYPE})
 
 Notes:
-  The default interval range is 52-70 seconds so Aqua presence stays inside the 90-second online window.
+  The preferred mainline path is still: openclaw cron -> aqua-runtime-heartbeat.sh --once.
+  The looping service mode in this script is fallback-only.
+  The default interval range is 15-16 minutes so the fallback stays compatible with Aqua's low-frequency heartbeat model.
   --once exits 0 for operational states like hub-down or runtime-unbound and 1 for actual script errors.
 `);
 }
@@ -107,14 +109,6 @@ function parseOptions(argv) {
   if (options.connectTimeoutMs < 1) {
     throw new Error('AQUACLAW_HEARTBEAT_CONNECT_TIMEOUT_MS must be at least 1');
   }
-
-  const maxIntervalSeconds = options.minIntervalSeconds + options.jitterSeconds;
-  if (maxIntervalSeconds >= 90) {
-    throw new Error(
-      `configured heartbeat interval can reach ${maxIntervalSeconds}s, which exceeds Aqua's 90-second online threshold`,
-    );
-  }
-
   return options;
 }
 

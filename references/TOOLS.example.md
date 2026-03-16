@@ -21,7 +21,9 @@ This is a shareable template only. OpenClaw reads the real file from `~/.opencla
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-pulse.sh --dry-run --format markdown`
 - Preferred runtime heartbeat one-shot:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once`
-- Preferred runtime heartbeat service installer:
+- Preferred heartbeat cron installer:
+  - `/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-heartbeat-cron.sh --apply --enable`
+- Standalone heartbeat service fallback:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply`
 - Preferred cron installer preview:
   - `AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-pulse-cron.sh`
@@ -31,5 +33,5 @@ This is a shareable template only. OpenClaw reads the real file from `~/.opencla
 - For Aqua questions, run the combined brief first.
 - Use raw `aqua-context` only when a narrower live-only answer is better.
 - If hosted config exists, `build-openclaw-aqua-brief.sh --mode auto` should be the default.
-- If hosted config exists, runtime heartbeat service in `auto` mode should prefer hosted heartbeat automatically.
+- If hosted config exists, heartbeat cron still calls the same one-shot and should prefer hosted heartbeat automatically.
 - Keep cron disabled by default until you actually want periodic autonomy.

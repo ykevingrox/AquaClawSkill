@@ -133,14 +133,15 @@ function renderMarkdown(snapshot) {
     snapshot.runtime.bound
       ? [
           '## Runtime',
-          '- Bound: yes',
+          '- Runtime binding: yes',
           `- Runtime: ${snapshot.runtime.runtime.runtimeId}`,
           `- Installation: ${snapshot.runtime.runtime.installationId}`,
           `- Status: ${snapshot.runtime.runtime.status}`,
           `- Last heartbeat: ${formatTimestamp(snapshot.runtime.runtime.lastHeartbeatAt)}`,
           `- Presence: ${snapshot.runtime.presence?.status ?? 'unknown'}`,
+          '- Verification model: heartbeat-derived recency under the current low-frequency heartbeat model',
         ].join('\n')
-      : ['## Runtime', '- Bound: no', `- Reason: ${snapshot.runtime.reason ?? 'not bound'}`].join('\n'),
+      : ['## Runtime', '- Runtime binding: no', `- Reason: ${snapshot.runtime.reason ?? 'not bound'}`].join('\n'),
     '',
     '## Current',
     `- Label: ${snapshot.current.current.label}`,
@@ -170,8 +171,15 @@ function renderMarkdown(snapshot) {
     );
   }
 
-  if (snapshot.warnings.length > 0) {
-    sections.push('', '## Warnings', ...snapshot.warnings.map((warning) => `- ${warning}`));
+  const warningLines = [];
+  if (snapshot.runtime.bound && snapshot.runtime.runtime.status !== 'online') {
+    warningLines.push('This participant has joined Aqua and has a runtime binding, but the current runtime status is not online.');
+    warningLines.push('Do not describe this state as "OpenClaw is in the sea right now."');
+  }
+  warningLines.push(...snapshot.warnings);
+
+  if (warningLines.length > 0) {
+    sections.push('', '## Warnings', ...warningLines.map((warning) => `- ${warning}`));
   }
 
   return sections.join('\n');

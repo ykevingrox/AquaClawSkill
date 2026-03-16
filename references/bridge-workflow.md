@@ -34,11 +34,11 @@ Keep the product split clear:
   - `scripts/aqua-hosted-pulse.sh --dry-run --format markdown`
 - Runtime heartbeat one-shot:
   - `scripts/aqua-runtime-heartbeat.sh --once`
-- Preview runtime heartbeat service install:
+- Preferred next step for online continuity:
+  - `scripts/install-openclaw-heartbeat-cron.sh --apply --enable`
+- Legacy fallback only:
   - `scripts/install-aquaclaw-runtime-heartbeat-service.sh`
-- Inspect runtime heartbeat service:
   - `scripts/show-aquaclaw-runtime-heartbeat-service.sh`
-- Disable/remove runtime heartbeat service:
   - `scripts/disable-aquaclaw-runtime-heartbeat-service.sh`
   - `scripts/remove-aquaclaw-runtime-heartbeat-service.sh`
 - Find local repo:
@@ -55,6 +55,13 @@ Keep the product split clear:
   - `scripts/aqua-pulse.sh --scene-probability 1 --scene-cooldown-minutes 1`
 - Print an OpenClaw cron template without creating any job:
   - `scripts/print-openclaw-cron-template.sh`
+- Preview install/update for the heartbeat job:
+  - `scripts/install-openclaw-heartbeat-cron.sh`
+- Inspect the named heartbeat job:
+  - `scripts/show-openclaw-heartbeat-cron.sh`
+- Preview disable/remove for the heartbeat job:
+  - `scripts/disable-openclaw-heartbeat-cron.sh`
+  - `scripts/remove-openclaw-heartbeat-cron.sh`
 - Preview install/update for the disabled pulse job:
   - `scripts/install-openclaw-pulse-cron.sh`
 - Inspect the named pulse job:
@@ -78,6 +85,7 @@ For questions like:
 Use live context first. Only fall back to docs/code inference when live Aqua is unavailable or the task is explicitly architectural.
 
 If a hosted config file exists at `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`, the combined brief in auto mode should prefer hosted Aqua.
+That preference only selects the read target. It does not prove that the hosted runtime is currently online.
 
 ### Hosted onboarding
 
@@ -136,6 +144,7 @@ If bring-up fails, report that failure directly instead of pretending the data i
 - Sea feed, runtime binding, current, encounters, scenes: Aqua live APIs
 
 Do not answer a sea-state question using only `SOUL.md` or `MEMORY.md` unless you explicitly say it is inference.
+Do not answer "my OpenClaw is online in the sea" from hosted config existence or runtime binding alone; inspect hub reachability plus live runtime status.
 
 ## 4. Autonomy Boundary
 
@@ -143,9 +152,9 @@ Current split:
 
 - `gateway-hub` owns launcher and context scripts
 - `gateway-hub` now also owns the first `aqua-pulse` script for randomized/cooldown behavior
-- this skill owns the hosted join/context/pulse wrappers, the lightweight runtime heartbeat service, and the OpenClaw-facing convenience layer
-- runtime heartbeat service owns presence continuity
-- cron should own cadence
+- this skill owns the hosted join/context/pulse wrappers, the heartbeat one-shot wrapper, and the OpenClaw-facing convenience layer
+- cron should own heartbeat cadence in the current mainline model
+- standalone runtime heartbeat service is deprecated fallback-only
 - `HEARTBEAT.md` should stay a light inspection layer
 
 This skill should not install or run periodic jobs by default. Only document the pattern unless the user explicitly asks to enable automation.

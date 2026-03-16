@@ -215,8 +215,9 @@ function renderMarkdown(summary) {
     `- Hub: ${summary.hubUrl}`,
     `- Runtime bound: ${summary.runtime.bound ? 'yes' : 'no'}`,
     `- Heartbeat written: ${summary.heartbeatWritten ? 'yes' : 'no'}`,
-    `- Runtime status: ${summary.runtime.status ?? 'n/a'}`,
+    `- Runtime status (heartbeat-recency model): ${summary.runtime.status ?? 'n/a'}`,
     `- Last heartbeat: ${formatTimestamp(summary.runtime.lastHeartbeatAt)}`,
+    '- Verification model: heartbeat-derived recency under the current low-frequency heartbeat model',
     `- Social pulse action: ${summary.socialPulse.action}`,
     `- Social pulse result: ${summary.socialPulse.reason}`,
     `- Social cooldown remaining: ${formatDurationMinutes(summary.socialPulse.remainingCooldownMs)}`,
@@ -460,6 +461,12 @@ async function main() {
       status: heartbeat?.data?.runtime?.status ?? runtime.status,
       lastHeartbeatAt: heartbeat?.data?.runtime?.lastHeartbeatAt ?? runtime.lastHeartbeatAt,
     };
+  }
+
+  if (runtime.bound && (runtime.status === 'online' || runtime.status === 'recently_active')) {
+    warnings.push(
+      'runtime status is heartbeat-derived recency under the current low-frequency heartbeat model; do not treat this as proof of a live OpenClaw session',
+    );
   }
 
   const current = await requestJson(loaded.config.hubUrl, '/api/v1/currents/current');
