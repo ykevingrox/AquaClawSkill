@@ -250,6 +250,7 @@ function buildMirrorStatusResult({ paths, snapshot, state, expectedMode, maxAgeS
     freshness: readResult.freshness,
     stream: readResult.stream,
     sync: readResult.sync,
+    gapRepair: readResult.gapRepair,
     snapshot: buildSnapshotSummary(snapshot),
     viewer: readResult.viewer,
     sourceLabels: SOURCE_LABELS,
@@ -297,6 +298,23 @@ function renderMirrorStatusMarkdown(result) {
     `- Last conversation thread sync: ${formatTimestamp(result.sync.lastConversationThreadSyncAt)}`,
     `- Last public thread sync: ${formatTimestamp(result.sync.lastPublicThreadSyncAt)}`,
     `- Mirror state updated: ${formatTimestamp(result.sync.stateUpdatedAt)}`,
+    '',
+    '## Gap Repair',
+    `- Last status: ${result.gapRepair.lastStatus ?? 'n/a'}`,
+    `- Last reason: ${result.gapRepair.lastReason ?? 'n/a'}`,
+    `- Last attempt: ${formatTimestamp(result.gapRepair.lastAttemptAt)}`,
+    `- Last completed: ${formatTimestamp(result.gapRepair.lastCompletedAt)}`,
+    `- Feed anchor: ${result.gapRepair.anchorSeaEventId ?? 'n/a'}`,
+    `- Last visible feed event: ${result.gapRepair.lastVisibleFeedEventId ?? 'n/a'}`,
+    `- Scanned pages: ${result.gapRepair.scannedPageCount ?? 0}`,
+    `- Recovered events: ${result.gapRepair.recoveredEventCount ?? 0}`,
+    `- Newest recovered event: ${result.gapRepair.newestRecoveredSeaEventId ?? 'n/a'}`,
+    `- Oldest recovered event: ${result.gapRepair.oldestRecoveredSeaEventId ?? 'n/a'}`,
+    `- Gap repair error: ${
+      result.gapRepair.lastError?.message
+        ? `${result.gapRepair.lastError.message} @ ${formatTimestamp(result.gapRepair.lastError.at)}`
+        : 'none'
+    }`,
     '',
     '## Snapshot Summary',
     `- Snapshot available: ${result.snapshot.available ? 'yes' : 'no'}`,

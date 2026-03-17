@@ -62,6 +62,18 @@ test('runMirrorStatus surfaces freshness, sync, and semantics from local mirror 
           lastConversationThreadSyncAt: '2026-03-17T08:02:30.000Z',
           lastPublicThreadSyncAt: '2026-03-17T08:02:45.000Z',
         },
+        gapRepair: {
+          lastVisibleFeedEventId: 'evt_visible',
+          lastAttemptAt: '2026-03-17T08:06:00.000Z',
+          lastCompletedAt: '2026-03-17T08:06:01.000Z',
+          lastStatus: 'recovered',
+          lastReason: 'cursor_outside_replay_window',
+          scannedPageCount: 2,
+          recoveredEventCount: 3,
+          anchorSeaEventId: 'evt_anchor',
+          newestRecoveredSeaEventId: 'evt_new',
+          oldestRecoveredSeaEventId: 'evt_old',
+        },
       },
       null,
       2,
@@ -104,6 +116,8 @@ test('runMirrorStatus surfaces freshness, sync, and semantics from local mirror 
   assert.equal(result.freshness.referenceLabel, 'state.updatedAt');
   assert.equal(result.stream.lastRejectedCursor, 'dlv_old');
   assert.equal(result.sync.lastPublicThreadSyncAt, '2026-03-17T08:02:45.000Z');
+  assert.equal(result.gapRepair.lastStatus, 'recovered');
+  assert.equal(result.gapRepair.anchorSeaEventId, 'evt_anchor');
   assert.equal(result.snapshot.aquaDisplayName, 'Silver Basin');
   assert.ok(result.fieldSemantics.lastHelloAt.includes('connected or reconnected'));
 });

@@ -107,6 +107,14 @@ test('buildMirrorReadResult marks stale mirrors and keeps key warning details', 
       viewer: {
         kind: 'gateway',
       },
+      gapRepair: {
+        lastStatus: 'bounded_recovery',
+        lastAttemptAt: '2026-03-16T10:04:00.000Z',
+        lastCompletedAt: '2026-03-16T10:05:00.000Z',
+        anchorSeaEventId: 'evt_anchor',
+        recoveredEventCount: 2,
+        scannedPageCount: 3,
+      },
       mirror: {
         lastContextSyncAt: '2026-03-16T10:00:00.000Z',
       },
@@ -127,10 +135,12 @@ test('buildMirrorReadResult marks stale mirrors and keeps key warning details', 
   assert.equal(result.freshness.status, 'stale');
   assert.equal(result.freshness.referenceKind, 'state_updated');
   assert.equal(result.viewer.handle, 'claw-silver');
+  assert.equal(result.gapRepair.lastStatus, 'bounded_recovery');
   assert.equal(result.stream.lastResyncRequiredAt, '2026-03-16T10:05:00.000Z');
   assert.equal(result.sync.lastContextSyncAt, '2026-03-16T10:00:00.000Z');
   assert.ok(result.warnings.some((warning) => warning.includes('stale')));
   assert.ok(result.warnings.some((warning) => warning.includes('resync')));
+  assert.ok(result.warnings.some((warning) => warning.includes('bounded gap repair')));
   assert.ok(result.warnings.some((warning) => warning.includes('stream error')));
   assert.ok(result.warnings.some((warning) => warning.includes('not currently marked online')));
 });
@@ -192,6 +202,10 @@ test('renderMirrorMarkdown surfaces source and freshness metadata', () => {
       mirror: {
         lastContextSyncAt: '2026-03-16T10:00:00.000Z',
       },
+      gapRepair: {
+        lastStatus: 'recovered',
+        recoveredEventCount: 1,
+      },
       stream: {
         lastEventAt: '2026-03-16T10:00:00.000Z',
       },
@@ -204,6 +218,7 @@ test('renderMirrorMarkdown surfaces source and freshness metadata', () => {
   assert.match(markdown, /Mirror freshness: fresh/);
   assert.match(markdown, /Mirror reference signal:/);
   assert.match(markdown, /## Mirror Stream/);
+  assert.match(markdown, /## Gap Repair/);
   assert.match(markdown, /## Current/);
   assert.match(markdown, /Harbor Host/);
 });

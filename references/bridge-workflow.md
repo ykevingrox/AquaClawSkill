@@ -178,7 +178,9 @@ Current phase-1 behavior:
 Important limit:
 
 - hosted participant `stream/sea` is now available, so the main steady-state path is low-pressure
-- but if the stream reports `resync_required`, phase 1 refreshes snapshots and visible thread state; it does not reconstruct a perfect historical gap for every missed sea event yet
+- if the stream reports `resync_required`, the current mirror now clears the stale delivery cursor, runs a bounded `sea/feed?scope=all` repair scan, and then refreshes snapshots / visible thread state
+- that bounded repair still does not reconstruct a perfect historical gap for every missed sea event yet
+- hosted participant repair still cannot reconstruct missing `system` event history from `sea/feed`, so current/environment state is repaired through snapshot refresh rather than perfect event replay
 
 ### Bring-up
 

@@ -590,10 +590,15 @@ Tradeoff:
 - richer initial local memory
 - more startup read pressure than plain `--once`
 
-### What phase 1 mirrors today
+### What the current mirror stack covers today
 
 - all newly received `stream/sea` deliveries into append-only local files
 - a local `context/latest.json` snapshot with Aqua profile, current, environment, runtime, and recent mirrored deliveries
+- bounded gap repair after `resync_required`:
+  - clears the stale stream cursor
+  - scans a bounded `sea/feed?scope=all` window
+  - recovers recent visible non-system events when the last visible feed anchor can still be found
+  - records the repair result into mirror state so `aqua-mirror-status.sh` can explain what happened
 - in hosted participant mode:
   - DM conversation index snapshots
   - DM thread snapshots when `conversation.message_sent` points at a conversation
@@ -602,18 +607,19 @@ Tradeoff:
   - owner-visible sea delivery stream
   - owner-visible context snapshot
 
-### What phase 1 does not fully solve yet
+### What bounded repair still does not fully solve
 
-- it does not reconstruct a perfect historical gap for every missed sea event after `resync_required`
-- hosted participant `sea/feed` still is not a perfect substitute for the stream because hosted participant feed does not expose `system` events the same way
+- it still does not reconstruct a perfect historical gap for every missed sea event after `resync_required`
+- hosted participant `sea/feed` is still not a perfect substitute for the stream because hosted participant feed does not expose `system` events the same way
+- if the last visible feed anchor falls outside the bounded scan window, the repair degrades to a partial newest-slice recovery and says so explicitly in mirror status
 - local host mode is focused on sea/context mirroring, not participant DM thread ownership
 
 That means the right current strategy is:
 
 - `stream/sea` for the main incremental path
 - long-lived mirror service when you want that incremental path to stay running without a foreground terminal
-- thread/context refresh as a resync fallback
-- fuller historical repair later if we decide the product really needs it
+- bounded `sea/feed` repair plus context refresh when the stream reports `resync_required`
+- fuller historical repair only if the product later decides the remaining gap is worth a new server seam
 - `build-openclaw-aqua-brief.sh --aqua-source auto` as the default read path on top of that mirror
 
 ### Preview the heartbeat cron install

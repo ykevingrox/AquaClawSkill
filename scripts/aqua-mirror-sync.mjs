@@ -4,12 +4,15 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { pathToFileURL } from 'node:url';
 
 import {
   buildStoredDeliveryRecord,
+  buildStoredSeaEventRecord,
   conversationFilePath,
   createDefaultMirrorState,
   datePartitionFromIso,
+  isSeaEventVisibleInFeedRepair,
   extractDeliveryHints,
   parseSseEventBlock,
   publicThreadFilePath,
@@ -35,6 +38,8 @@ const DEFAULT_LOCAL_HUB_URL = 'http://127.0.0.1:8787';
 const DEFAULT_IDLE_SECONDS = 5;
 const DEFAULT_RECONNECT_SECONDS = 5;
 const DEFAULT_PUBLIC_THREAD_LIMIT = 20;
+const DEFAULT_GAP_REPAIR_PAGE_LIMIT = 50;
+const DEFAULT_GAP_REPAIR_MAX_PAGES = 3;
 const VALID_MODES = new Set(['auto', 'hosted', 'local']);
 
 function readEnvFlag(name, fallback = false) {
@@ -95,6 +100,11 @@ What this command mirrors:
   - a current context snapshot under .aquaclaw/mirror/context/latest.json
   - hosted participant DM summaries/threads under .aquaclaw/mirror/conversations/
   - hosted participant public threads under .aquaclaw/mirror/public-threads/
+
+Automatic bounded gap repair:
+  - on stream resync_required, the mirror clears the stale delivery cursor
+  - then it performs a bounded sea/feed scan to recover recent visible non-system events when possible
+  - current/environment snapshots are still refreshed after that repair step
 `);
 }
 
@@ -344,6 +354,17 @@ async function createHostedTarget(options) {
         token: loaded.config.credential.token,
       });
     },
+    async fetchSeaFeedPage({ cursor = null, limit = DEFAULT_GAP_REPAIR_PAGE_LIMIT, scope = 'all' } = {}) {
+      const query = new URLSearchParams();
+      query.set('scope', scope);
+      query.set('limit', String(limit));
+      if (cursor) {
+        query.set('cursor', cursor);
+      }
+      return requestJson(loaded.config.hubUrl, `/api/v1/sea/feed?${query.toString()}`, {
+        token: loaded.config.credential.token,
+      });
+    },
   };
 }
 
@@ -399,6 +420,15 @@ async function createLocalTarget(options) {
         runtime,
       };
     },
+    async fetchSeaFeedPage({ cursor = null, limit = DEFAULT_GAP_REPAIR_PAGE_LIMIT, scope = 'all' } = {}) {
+      const query = new URLSearchParams();
+      query.set('scope', scope);
+      query.set('limit', String(limit));
+      if (cursor) {
+        query.set('cursor', cursor);
+      }
+      return requestJson(hubUrl, `/api/v1/sea/feed?${query.toString()}`, { token });
+    },
   };
 }
 
@@ -443,6 +473,54 @@ async function openSeaStream(target, lastEventId) {
   return {
     response,
     reader: response.body.getReader(),
+  };
+}
+
+export function selectGapRepairAnchor(state, viewerKind) {
+  const explicit = state?.gapRepair?.lastVisibleFeedEventId;
+  if (typeof explicit === 'string' && explicit.trim()) {
+    return explicit.trim();
+  }
+
+  const deliveries = Array.isArray(state?.recentDeliveries) ? state.recentDeliveries : [];
+  for (let index = deliveries.length - 1; index >= 0; index -= 1) {
+    const seaEvent = deliveries[index]?.seaEvent;
+    if (isSeaEventVisibleInFeedRepair(seaEvent, viewerKind) && typeof seaEvent?.id === 'string' && seaEvent.id.trim()) {
+      return seaEvent.id.trim();
+    }
+  }
+
+  return null;
+}
+
+function rememberGapRepairAnchor(state, viewerKind, seaEvent) {
+  if (!isSeaEventVisibleInFeedRepair(seaEvent, viewerKind)) {
+    return;
+  }
+  if (typeof seaEvent?.id === 'string' && seaEvent.id.trim()) {
+    state.gapRepair.lastVisibleFeedEventId = seaEvent.id.trim();
+  }
+}
+
+export function collectGapRepairPageItems(items, anchorSeaEventId, cutoffAt) {
+  const collected = [];
+
+  for (const item of Array.isArray(items) ? items : []) {
+    if (typeof item?.createdAt === 'string' && cutoffAt && item.createdAt > cutoffAt) {
+      continue;
+    }
+    if (anchorSeaEventId && item?.id === anchorSeaEventId) {
+      return {
+        anchorFound: true,
+        collected,
+      };
+    }
+    collected.push(item);
+  }
+
+  return {
+    anchorFound: false,
+    collected,
   };
 }
 
@@ -646,6 +724,7 @@ async function mirrorDelivery(target, paths, state, delivery) {
   state.stream.lastDeliveryId = delivery?.id ?? state.stream.lastDeliveryId;
   state.stream.lastSeaEventId = delivery?.seaEvent?.id ?? state.stream.lastSeaEventId;
   state.stream.lastEventAt = recordedAt;
+  rememberGapRepairAnchor(state, target.viewerKind, delivery?.seaEvent);
 
   const hints = extractDeliveryHints(delivery);
 
@@ -688,6 +767,124 @@ async function mirrorDelivery(target, paths, state, delivery) {
   }
 }
 
+async function appendRecoveredSeaEvent(paths, state, seaEvent) {
+  const recordedAt = new Date().toISOString();
+  const storedRecord = buildStoredSeaEventRecord(seaEvent, recordedAt);
+  const partition = datePartitionFromIso(seaEvent?.createdAt ?? recordedAt);
+  const seaLogPath = path.join(paths.seaEventsDir, `${partition}.ndjson`);
+
+  await appendNdjson(seaLogPath, storedRecord);
+  state.recentDeliveries = pushRecentDelivery(state.recentDeliveries, storedRecord);
+}
+
+async function repairVisibleSeaGap(target, paths, state, reason, cutoffAt) {
+  const anchorSeaEventId = selectGapRepairAnchor(state, target.viewerKind);
+  state.gapRepair.lastAttemptAt = new Date().toISOString();
+  state.gapRepair.lastReason = reason ?? null;
+  state.gapRepair.lastError = null;
+  state.gapRepair.anchorSeaEventId = anchorSeaEventId;
+  state.gapRepair.scannedPageCount = 0;
+  state.gapRepair.recoveredEventCount = 0;
+  state.gapRepair.newestRecoveredSeaEventId = null;
+  state.gapRepair.oldestRecoveredSeaEventId = null;
+
+  if (!anchorSeaEventId) {
+    state.gapRepair.lastStatus = 'skipped_no_anchor';
+    state.gapRepair.lastCompletedAt = new Date().toISOString();
+    return {
+      status: 'skipped_no_anchor',
+      scannedPageCount: 0,
+      recoveredEventCount: 0,
+      anchorSeaEventId: null,
+      conversationIds: [],
+      publicThreadIds: [],
+      refreshContext: false,
+    };
+  }
+
+  let cursor = null;
+  let anchorFound = false;
+  let scannedPageCount = 0;
+  const collectedNewestFirst = [];
+
+  while (scannedPageCount < DEFAULT_GAP_REPAIR_MAX_PAGES) {
+    const payload = await target.fetchSeaFeedPage({
+      cursor,
+      limit: DEFAULT_GAP_REPAIR_PAGE_LIMIT,
+      scope: 'all',
+    });
+    scannedPageCount += 1;
+    const items = payload?.data?.items ?? [];
+    const page = collectGapRepairPageItems(items, anchorSeaEventId, cutoffAt);
+    collectedNewestFirst.push(...page.collected);
+    if (page.anchorFound) {
+      anchorFound = true;
+      break;
+    }
+
+    cursor = payload?.data?.nextCursor ?? null;
+    if (!cursor || items.length === 0) {
+      break;
+    }
+  }
+
+  const dedupedNewestFirst = [];
+  const seenSeaEventIds = new Set();
+  for (const seaEvent of collectedNewestFirst) {
+    if (!seaEvent?.id || seenSeaEventIds.has(seaEvent.id)) {
+      continue;
+    }
+    seenSeaEventIds.add(seaEvent.id);
+    dedupedNewestFirst.push(seaEvent);
+  }
+  const recoveredEvents = dedupedNewestFirst.reverse();
+  const conversationIds = new Set();
+  const publicThreadIds = new Set();
+  let refreshContext = false;
+  let refreshConversationIndex = false;
+
+  for (const seaEvent of recoveredEvents) {
+    await appendRecoveredSeaEvent(paths, state, seaEvent);
+    rememberGapRepairAnchor(state, target.viewerKind, seaEvent);
+
+    const hints = extractDeliveryHints({ seaEvent });
+    refreshContext = refreshContext || hints.refreshContext;
+    refreshConversationIndex = refreshConversationIndex || hints.refreshConversationIndex;
+    for (const update of hints.conversationUpdates) {
+      conversationIds.add(update.conversationId);
+    }
+    for (const update of hints.publicThreadUpdates) {
+      publicThreadIds.add(update.rootExpressionId);
+    }
+  }
+
+  state.gapRepair.scannedPageCount = scannedPageCount;
+  state.gapRepair.recoveredEventCount = recoveredEvents.length;
+  state.gapRepair.newestRecoveredSeaEventId = recoveredEvents.at(-1)?.id ?? null;
+  state.gapRepair.oldestRecoveredSeaEventId = recoveredEvents[0]?.id ?? null;
+  state.gapRepair.lastStatus = anchorFound
+    ? recoveredEvents.length > 0
+      ? 'recovered'
+      : 'up_to_date'
+    : recoveredEvents.length > 0
+      ? 'bounded_recovery'
+      : 'anchor_out_of_window';
+  state.gapRepair.lastCompletedAt = new Date().toISOString();
+
+  return {
+    status: state.gapRepair.lastStatus,
+    scannedPageCount,
+    recoveredEventCount: recoveredEvents.length,
+    anchorSeaEventId,
+    newestRecoveredSeaEventId: state.gapRepair.newestRecoveredSeaEventId,
+    oldestRecoveredSeaEventId: state.gapRepair.oldestRecoveredSeaEventId,
+    conversationIds: Array.from(conversationIds),
+    publicThreadIds: Array.from(publicThreadIds),
+    refreshContext: refreshContext || recoveredEvents.length > 0,
+    refreshConversationIndex,
+  };
+}
+
 async function handleStreamFrame(target, paths, state, options, frame) {
   const now = new Date().toISOString();
 
@@ -715,7 +912,27 @@ async function handleStreamFrame(target, paths, state, options, frame) {
   if (frame.event === 'resync_required') {
     state.stream.lastResyncRequiredAt = now;
     state.stream.lastRejectedCursor = frame?.data?.cursor ?? null;
+    state.stream.lastDeliveryId = null;
     state.stream.resyncCount += 1;
+    let gapRepairSummary = null;
+    try {
+      gapRepairSummary = await repairVisibleSeaGap(
+        target,
+        paths,
+        state,
+        frame?.data?.reason ?? 'resync_required',
+        now,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      state.gapRepair.lastError = {
+        at: new Date().toISOString(),
+        message,
+      };
+      state.gapRepair.lastStatus = 'failed';
+      state.gapRepair.lastCompletedAt = new Date().toISOString();
+      log('warn', 'bounded gap repair failed after resync_required', { error: message });
+    }
     await withWarning('context refresh failed after resync_required', async () => {
       await persistContextSnapshot(target, paths, state);
     });
@@ -723,10 +940,24 @@ async function handleStreamFrame(target, paths, state, options, frame) {
       await withWarning('conversation index sync failed after resync_required', async () => {
         await syncConversationIndex(target, paths, state);
       });
+      if (!options.hydrateConversations && gapRepairSummary?.conversationIds?.length) {
+        for (const conversationId of gapRepairSummary.conversationIds) {
+          await withWarning(`conversation thread sync failed after gap repair for ${conversationId}`, async () => {
+            await syncConversationThread(target, paths, state, conversationId);
+          });
+        }
+      }
       if (options.hydrateConversations) {
         await withWarning('conversation hydration failed after resync_required', async () => {
           await hydrateConversationThreads(target, paths, state);
         });
+      }
+      if (!options.hydratePublicThreads && gapRepairSummary?.publicThreadIds?.length) {
+        for (const rootExpressionId of gapRepairSummary.publicThreadIds) {
+          await withWarning(`public-thread sync failed after gap repair for ${rootExpressionId}`, async () => {
+            await syncPublicThread(target, paths, state, rootExpressionId);
+          });
+        }
       }
       if (options.hydratePublicThreads) {
         await withWarning('public-thread hydration failed after resync_required', async () => {
@@ -735,7 +966,10 @@ async function handleStreamFrame(target, paths, state, options, frame) {
       }
     }
     await saveMirrorState(paths.statePath, state);
-    log('warn', 'stream requested resync', frame.data ?? null);
+    log('warn', 'stream requested resync', {
+      ...(frame.data ?? {}),
+      gapRepair: gapRepairSummary,
+    });
     return;
   }
 
@@ -874,8 +1108,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  });
+}

@@ -64,6 +64,19 @@ export function createDefaultMirrorState() {
       lastConversationThreadSyncAt: null,
       lastPublicThreadSyncAt: null,
     },
+    gapRepair: {
+      lastVisibleFeedEventId: null,
+      lastAttemptAt: null,
+      lastCompletedAt: null,
+      lastStatus: null,
+      lastReason: null,
+      lastError: null,
+      scannedPageCount: 0,
+      recoveredEventCount: 0,
+      anchorSeaEventId: null,
+      newestRecoveredSeaEventId: null,
+      oldestRecoveredSeaEventId: null,
+    },
     recentDeliveries: [],
     conversations: {
       items: [],
@@ -131,6 +144,10 @@ export function normalizeMirrorState(input) {
       ...base.mirror,
       ...(input.mirror && typeof input.mirror === 'object' ? input.mirror : {}),
     },
+    gapRepair: {
+      ...base.gapRepair,
+      ...(input.gapRepair && typeof input.gapRepair === 'object' ? input.gapRepair : {}),
+    },
     recentDeliveries: Array.isArray(input.recentDeliveries) ? input.recentDeliveries : [],
     conversations: {
       ...base.conversations,
@@ -172,15 +189,48 @@ export function datePartitionFromIso(value) {
   return parsed.toISOString().slice(0, 10);
 }
 
+export function deriveSeaEventActivityGatewayIds(seaEvent) {
+  return Array.from(
+    new Set(
+      [seaEvent?.actorGatewayId, seaEvent?.subjectGatewayId, seaEvent?.objectGatewayId].filter(
+        (value) => typeof value === 'string' && value.trim(),
+      ),
+    ),
+  );
+}
+
 export function buildStoredDeliveryRecord(delivery, recordedAt = new Date().toISOString()) {
   return {
     source: 'stream',
     recordedAt,
     deliveryId: delivery?.id ?? null,
-    activityGatewayIds: Array.isArray(delivery?.activityGatewayIds) ? delivery.activityGatewayIds : [],
+    activityGatewayIds: Array.isArray(delivery?.activityGatewayIds)
+      ? delivery.activityGatewayIds
+      : deriveSeaEventActivityGatewayIds(delivery?.seaEvent),
     currentChanged: delivery?.currentChanged === true,
     seaEvent: delivery?.seaEvent ?? null,
   };
+}
+
+export function buildStoredSeaEventRecord(seaEvent, recordedAt = new Date().toISOString(), source = 'feed_repair') {
+  return {
+    source,
+    recordedAt,
+    deliveryId: null,
+    activityGatewayIds: deriveSeaEventActivityGatewayIds(seaEvent),
+    currentChanged: seaEvent?.type === 'current.changed',
+    seaEvent: seaEvent ?? null,
+  };
+}
+
+export function isSeaEventVisibleInFeedRepair(event, viewerKind) {
+  if (!event || typeof event !== 'object') {
+    return false;
+  }
+  if (viewerKind === 'gateway') {
+    return event.visibility !== 'system';
+  }
+  return true;
 }
 
 function deliveryRecordKey(record) {

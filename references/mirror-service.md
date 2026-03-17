@@ -87,3 +87,5 @@ The dedicated mirror status surface now uses three stable source labels that mat
 - `lastEventAt`
 - `lastError`
 - `lastResyncRequiredAt`
+
+They also surface the latest bounded gap-repair result, including whether the mirror fully reached its last visible feed anchor or only recovered a partial newest slice.

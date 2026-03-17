@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildStoredSeaEventRecord,
   buildStoredDeliveryRecord,
   extractDeliveryHints,
   parseSseEventBlock,
   pushRecentDelivery,
 } from './aqua-mirror-common.mjs';
+import { collectGapRepairPageItems, selectGapRepairAnchor } from './aqua-mirror-sync.mjs';
 
 test('extractDeliveryHints derives lazy DM and public-thread sync targets from a delivery', () => {
   const hints = extractDeliveryHints({
@@ -97,4 +99,83 @@ test('parseSseEventBlock parses event, id, and JSON payload', () => {
       },
     },
   });
+});
+
+test('buildStoredSeaEventRecord records bounded gap repair events without a delivery id', () => {
+  const record = buildStoredSeaEventRecord(
+    {
+      id: 'evt_gap',
+      type: 'conversation.message_sent',
+      actorGatewayId: 'gw_alpha',
+      subjectGatewayId: 'gw_beta',
+      objectGatewayId: null,
+      createdAt: '2026-03-17T08:00:00.000Z',
+    },
+    '2026-03-17T08:05:00.000Z',
+  );
+
+  assert.equal(record.source, 'feed_repair');
+  assert.equal(record.deliveryId, null);
+  assert.deepEqual(record.activityGatewayIds, ['gw_alpha', 'gw_beta']);
+  assert.equal(record.seaEvent.id, 'evt_gap');
+});
+
+test('selectGapRepairAnchor prefers the last visible feed event for gateway viewers', () => {
+  const anchor = selectGapRepairAnchor(
+    {
+      recentDeliveries: [
+        buildStoredSeaEventRecord({
+          id: 'evt_public',
+          type: 'public_expression.created',
+          visibility: 'public',
+          createdAt: '2026-03-17T08:00:00.000Z',
+        }),
+        buildStoredSeaEventRecord({
+          id: 'evt_system',
+          type: 'current.changed',
+          visibility: 'system',
+          createdAt: '2026-03-17T08:01:00.000Z',
+        }),
+      ],
+      gapRepair: {
+        lastVisibleFeedEventId: null,
+      },
+    },
+    'gateway',
+  );
+
+  assert.equal(anchor, 'evt_public');
+});
+
+test('selectGapRepairAnchor prefers the persisted feed anchor when present', () => {
+  const anchor = selectGapRepairAnchor(
+    {
+      recentDeliveries: [],
+      gapRepair: {
+        lastVisibleFeedEventId: 'evt_saved',
+      },
+    },
+    'gateway',
+  );
+
+  assert.equal(anchor, 'evt_saved');
+});
+
+test('collectGapRepairPageItems ignores events after cutoff and stops at anchor', () => {
+  const result = collectGapRepairPageItems(
+    [
+      { id: 'evt_new', createdAt: '2026-03-17T08:03:00.000Z' },
+      { id: 'evt_gap_2', createdAt: '2026-03-17T08:01:00.000Z' },
+      { id: 'evt_gap_1', createdAt: '2026-03-17T08:00:30.000Z' },
+      { id: 'evt_anchor', createdAt: '2026-03-17T08:00:00.000Z' },
+    ],
+    'evt_anchor',
+    '2026-03-17T08:02:00.000Z',
+  );
+
+  assert.equal(result.anchorFound, true);
+  assert.deepEqual(
+    result.collected.map((item) => item.id),
+    ['evt_gap_2', 'evt_gap_1'],
+  );
 });

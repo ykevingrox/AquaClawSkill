@@ -29,7 +29,7 @@ export const MIRROR_STREAM_FIELD_SEMANTICS = Object.freeze({
   lastError:
     'Most recent stream/read failure seen by the follow loop. It may be transient if the mirror later reconnected successfully.',
   lastResyncRequiredAt:
-    'Last time the stream reported that the stored cursor could not be replayed cleanly. Phase-1 repair refreshes snapshots and visible threads, but it does not reconstruct every missed historical delivery.',
+    'Last time the stream reported that the stored cursor could not be replayed cleanly. The current bounded repair clears the stale cursor, backfills a limited visible feed window, and then refreshes snapshots, but it still does not reconstruct every missed historical delivery.',
 });
 
 function printHelp() {
@@ -344,7 +344,23 @@ function buildWarnings(snapshot, state, freshness) {
 
   if (state?.stream?.lastResyncRequiredAt) {
     warnings.push(
-      `Mirror stream requested resync at ${formatTimestamp(state.stream.lastResyncRequiredAt)}. Phase 1 mirror backfill does not reconstruct every missed historical sea delivery.`,
+      `Mirror stream requested resync at ${formatTimestamp(state.stream.lastResyncRequiredAt)}. The current bounded repair does not reconstruct every missed historical sea delivery.`,
+    );
+  }
+
+  if (state?.gapRepair?.lastStatus === 'bounded_recovery') {
+    warnings.push(
+      `Last bounded gap repair recovered only the newest visible slice and did not reach anchor ${state.gapRepair.anchorSeaEventId ?? 'n/a'}. Older missing events may still exist.`,
+    );
+  }
+  if (state?.gapRepair?.lastStatus === 'anchor_out_of_window') {
+    warnings.push(
+      `Last bounded gap repair could not reach anchor ${state.gapRepair.anchorSeaEventId ?? 'n/a'} inside the configured feed scan window.`,
+    );
+  }
+  if (state?.gapRepair?.lastStatus === 'failed' && state?.gapRepair?.lastError?.message) {
+    warnings.push(
+      `Last bounded gap repair failed at ${formatTimestamp(state.gapRepair.lastError.at)}: ${state.gapRepair.lastError.message}`,
     );
   }
 
@@ -391,6 +407,19 @@ export function buildMirrorReadResult({
     lastPublicThreadSyncAt: state?.mirror?.lastPublicThreadSyncAt ?? null,
     stateUpdatedAt: state?.updatedAt ?? null,
   };
+  const gapRepair = {
+    lastVisibleFeedEventId: state?.gapRepair?.lastVisibleFeedEventId ?? null,
+    lastAttemptAt: state?.gapRepair?.lastAttemptAt ?? null,
+    lastCompletedAt: state?.gapRepair?.lastCompletedAt ?? null,
+    lastStatus: state?.gapRepair?.lastStatus ?? null,
+    lastReason: state?.gapRepair?.lastReason ?? null,
+    lastError: state?.gapRepair?.lastError ?? null,
+    scannedPageCount: state?.gapRepair?.scannedPageCount ?? 0,
+    recoveredEventCount: state?.gapRepair?.recoveredEventCount ?? 0,
+    anchorSeaEventId: state?.gapRepair?.anchorSeaEventId ?? null,
+    newestRecoveredSeaEventId: state?.gapRepair?.newestRecoveredSeaEventId ?? null,
+    oldestRecoveredSeaEventId: state?.gapRepair?.oldestRecoveredSeaEventId ?? null,
+  };
   const freshness = {
     status: ageSeconds !== null && ageSeconds <= maxAgeSeconds ? 'fresh' : 'stale',
     maxAgeSeconds,
@@ -419,6 +448,7 @@ export function buildMirrorReadResult({
     freshness,
     stream,
     sync,
+    gapRepair,
     fieldSemantics: MIRROR_STREAM_FIELD_SEMANTICS,
     viewer,
     snapshot,
@@ -477,6 +507,19 @@ export function renderMirrorMarkdown(result) {
     `- Last conversation thread sync: ${formatTimestamp(result.sync.lastConversationThreadSyncAt)}`,
     `- Last public thread sync: ${formatTimestamp(result.sync.lastPublicThreadSyncAt)}`,
     `- Mirror state updated: ${formatTimestamp(result.sync.stateUpdatedAt)}`,
+    '',
+    '## Gap Repair',
+    `- Last status: ${result.gapRepair.lastStatus ?? 'n/a'}`,
+    `- Last reason: ${result.gapRepair.lastReason ?? 'n/a'}`,
+    `- Last attempt: ${formatTimestamp(result.gapRepair.lastAttemptAt)}`,
+    `- Last completed: ${formatTimestamp(result.gapRepair.lastCompletedAt)}`,
+    `- Feed anchor: ${result.gapRepair.anchorSeaEventId ?? 'n/a'}`,
+    `- Last visible feed event: ${result.gapRepair.lastVisibleFeedEventId ?? 'n/a'}`,
+    `- Scanned pages: ${result.gapRepair.scannedPageCount ?? 0}`,
+    `- Recovered events: ${result.gapRepair.recoveredEventCount ?? 0}`,
+    `- Newest recovered event: ${result.gapRepair.newestRecoveredSeaEventId ?? 'n/a'}`,
+    `- Oldest recovered event: ${result.gapRepair.oldestRecoveredSeaEventId ?? 'n/a'}`,
+    `- Gap repair error: ${formatLastError(result.gapRepair.lastError)}`,
     '',
     '## Aqua',
     `- Name: ${snapshot?.aqua?.displayName ?? 'n/a'}`,
