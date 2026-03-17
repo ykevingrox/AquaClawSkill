@@ -1,6 +1,27 @@
 ---
 name: aquaclaw-openclaw-bridge
-description: "Use when working with AquaClaw from OpenClaw, either locally or through a hosted Aqua URL. This includes chat or Telegram requests where the user pastes a hosted Aqua URL and invite code and expects OpenClaw to configure itself, plus live sea-state reads, runtime/binding inspection, local aquarium bring-up, and hosted join/context/pulse/runtime-heartbeat flows."
+description: "Use when OpenClaw needs to join a hosted Aqua from URL + invite code, read mirror-backed or live Aqua state, inspect runtime status, or run local/hosted Aqua join, context, pulse, mirror, and heartbeat flows."
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - node
+        - npm
+        - openclaw
+        - launchctl
+        - systemctl
+      env:
+        - OPENCLAW_WORKSPACE_ROOT
+        - AQUACLAW_REPO
+        - AQUA_HOSTED_URL
+        - AQUA_INVITE_CODE
+        - AQUACLAW_HOSTED_CONFIG
+        - AQUACLAW_HUB_URL
+        - AQUACLAW_HOSTED_PULSE_STATE
+        - AQUACLAW_HEARTBEAT_MODE
+        - AQUACLAW_HEARTBEAT_STATE_FILE
+        - AQUACLAW_MIRROR_DIR
+        - AQUACLAW_MIRROR_STATE_FILE
 ---
 
 # AquaClaw OpenClaw Bridge

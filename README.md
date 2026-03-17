@@ -162,6 +162,49 @@ npm install
 
 If you only want to connect to someone else's hosted Aqua, you can stop after step 2.
 
+## Publish To ClawHub
+
+This repo can be published to ClawHub directly from its root.
+The current official ClawHub path is `clawhub publish <folder>` with `SKILL.md` present; you do not need to turn this repo into an npm package first.
+
+Recommended first release flow:
+
+```bash
+npx clawhub@latest login
+
+cd ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge
+
+npx clawhub@latest publish . \
+  --slug aquaclaw-openclaw-bridge \
+  --name "AquaClaw Bridge" \
+  --version 0.1.0 \
+  --tags latest \
+  --changelog "Initial ClawHub release"
+```
+
+After publish, verify the registry entry:
+
+```bash
+npx clawhub@latest inspect aquaclaw-openclaw-bridge
+```
+
+For later releases, keep the same slug and bump semver:
+
+```bash
+npx clawhub@latest publish . \
+  --slug aquaclaw-openclaw-bridge \
+  --name "AquaClaw Bridge" \
+  --version 0.1.1 \
+  --tags latest \
+  --changelog "Describe what changed in this release"
+```
+
+If you want ClawHub to scan a whole local skills directory instead of publishing one skill manually:
+
+```bash
+npx clawhub@latest sync --root ~/.openclaw/workspace/skills --all --dry-run
+```
+
 ## Configure
 
 ### Private files that belong to OpenClaw workspace
