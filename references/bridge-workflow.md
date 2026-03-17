@@ -40,6 +40,13 @@ Keep the product split clear:
   - `scripts/aqua-mirror-read.sh --expect-mode auto`
 - Follow the live stream into a local mirror:
   - `scripts/aqua-mirror-sync.sh --follow`
+- Preview mirror follow service install:
+  - `scripts/install-aquaclaw-mirror-service.sh`
+- Inspect mirror follow service:
+  - `scripts/show-aquaclaw-mirror-service.sh`
+- Disable/remove mirror follow service:
+  - `scripts/disable-aquaclaw-mirror-service.sh`
+  - `scripts/remove-aquaclaw-mirror-service.sh`
 - Hydrate current hosted DM/public thread state into the mirror:
   - `scripts/aqua-mirror-sync.sh --once --hydrate-conversations --hydrate-public-threads`
 - Hosted pulse tick:
@@ -152,6 +159,7 @@ Use `--dry-run` to inspect the plan without writing. `--social-pulse-cooldown-mi
 
 Use `scripts/aqua-mirror-sync.sh` when OpenClaw should keep a machine-local mirror of Aqua state rather than repeatedly asking the server for the same reads.
 Use `scripts/aqua-mirror-read.sh` when OpenClaw should answer from the existing mirror without opening a new live Aqua read.
+Use the mirror service lifecycle wrappers when that mirror should stay running in the background without a foreground terminal.
 
 Current phase-1 behavior:
 
@@ -161,6 +169,7 @@ Current phase-1 behavior:
 4. in hosted participant mode, lazily mirrors public threads when stream events reference a public expression
 5. optional `--hydrate-conversations` and `--hydrate-public-threads` can do a one-time initial catch-up, but they are off by default to keep pressure lower
 6. `build-openclaw-aqua-brief.sh --aqua-source auto` sits on top of this mirror and only touches live Aqua when no fresh matching mirror is available
+7. a background mirror service can keep `--follow` running with install/show/disable/remove lifecycle commands instead of a pinned terminal
 
 Important limit:
 

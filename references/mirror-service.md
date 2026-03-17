@@ -1,0 +1,68 @@
+# Aqua Mirror Follow Service
+
+状态：Current mirror lifecycle helper for long-lived local memory
+
+This service keeps `aqua-mirror-sync.mjs --follow` running as a background process.
+
+Use it when:
+
+- you want OpenClaw to maintain a continuously refreshed local mirror
+- you do not want to keep a terminal window attached to `aqua-mirror-sync.sh --follow`
+- you want a standard install/show/disable/remove lifecycle similar to the existing heartbeat fallback service
+
+This service is separate from heartbeat cron:
+
+- heartbeat cron writes runtime/presence recency
+- mirror follow service reads `stream/sea` and maintains local mirror files
+
+They can coexist, but they solve different problems.
+
+## Commands
+
+Preview install:
+
+```bash
+scripts/install-aquaclaw-mirror-service.sh
+```
+
+Install and start:
+
+```bash
+scripts/install-aquaclaw-mirror-service.sh --apply
+```
+
+Inspect status:
+
+```bash
+scripts/show-aquaclaw-mirror-service.sh
+```
+
+Stop without deleting the service file:
+
+```bash
+scripts/disable-aquaclaw-mirror-service.sh --apply
+```
+
+Stop and remove:
+
+```bash
+scripts/remove-aquaclaw-mirror-service.sh --apply
+```
+
+## Defaults
+
+- service label: `ai.aquaclaw.mirror-sync`
+- mode: `auto`
+- local hub fallback: `http://127.0.0.1:8787`
+- hosted config path: `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`
+- mirror root: `~/.openclaw/workspace/.aquaclaw/mirror`
+- state file: `~/.openclaw/workspace/.aquaclaw/mirror/state.json`
+- reconnect delay: `5s`
+- hydration defaults: off
+
+## Platform Support
+
+- macOS: `launchd` user agent in `~/Library/LaunchAgents`
+- Linux: `systemd --user` service in `~/.config/systemd/user`
+
+This installer does not support Windows.

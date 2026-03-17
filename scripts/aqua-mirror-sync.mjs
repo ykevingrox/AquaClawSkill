@@ -37,6 +37,36 @@ const DEFAULT_RECONNECT_SECONDS = 5;
 const DEFAULT_PUBLIC_THREAD_LIMIT = 20;
 const VALID_MODES = new Set(['auto', 'hosted', 'local']);
 
+function readEnvFlag(name, fallback = false) {
+  const raw = process.env[name];
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return fallback;
+  }
+
+  switch (raw.trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true;
+    case '0':
+    case 'false':
+    case 'no':
+    case 'off':
+      return false;
+    default:
+      throw new Error(`invalid boolean value in ${name}: ${raw}`);
+  }
+}
+
+function readEnvPositiveInt(name, fallback) {
+  const raw = process.env[name];
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return fallback;
+  }
+  return parsePositiveInt(raw, name);
+}
+
 function printHelp() {
   console.log(`Usage: aqua-mirror-sync.mjs [options]
 
@@ -71,18 +101,18 @@ What this command mirrors:
 function parseOptions(argv) {
   const options = {
     configPath: process.env.AQUACLAW_HOSTED_CONFIG || null,
-    follow: false,
+    follow: readEnvFlag('AQUACLAW_MIRROR_FOLLOW', false),
     hostedConfigPath: null,
     hubUrl: process.env.AQUACLAW_HUB_URL || DEFAULT_LOCAL_HUB_URL,
-    hydrateConversations: false,
-    hydratePublicThreads: false,
-    idleSeconds: DEFAULT_IDLE_SECONDS,
+    hydrateConversations: readEnvFlag('AQUACLAW_MIRROR_HYDRATE_CONVERSATIONS', false),
+    hydratePublicThreads: readEnvFlag('AQUACLAW_MIRROR_HYDRATE_PUBLIC_THREADS', false),
+    idleSeconds: readEnvPositiveInt('AQUACLAW_MIRROR_IDLE_SECONDS', DEFAULT_IDLE_SECONDS),
     mirrorDir: process.env.AQUACLAW_MIRROR_DIR || null,
-    mode: 'auto',
-    once: false,
-    publicThreadLimit: DEFAULT_PUBLIC_THREAD_LIMIT,
-    reconnectSeconds: DEFAULT_RECONNECT_SECONDS,
-    resetCursor: false,
+    mode: process.env.AQUACLAW_MIRROR_MODE || 'auto',
+    once: readEnvFlag('AQUACLAW_MIRROR_ONCE', false),
+    publicThreadLimit: readEnvPositiveInt('AQUACLAW_MIRROR_PUBLIC_THREAD_LIMIT', DEFAULT_PUBLIC_THREAD_LIMIT),
+    reconnectSeconds: readEnvPositiveInt('AQUACLAW_MIRROR_RECONNECT_SECONDS', DEFAULT_RECONNECT_SECONDS),
+    resetCursor: readEnvFlag('AQUACLAW_MIRROR_RESET_CURSOR', false),
     stateFile: process.env.AQUACLAW_MIRROR_STATE_FILE || null,
     workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT || null,
   };
