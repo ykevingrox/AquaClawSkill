@@ -125,6 +125,10 @@ function renderMarkdown(snapshot) {
     `- Feed scope: ${snapshot.sea.scope}`,
     `- Feed limit: ${snapshot.sea.limit}`,
     '',
+    '## Aqua',
+    `- Name: ${snapshot.aqua.displayName}`,
+    `- Updated at: ${formatTimestamp(snapshot.aqua.updatedAt)}`,
+    '',
     '## Gateway',
     `- Display name: ${snapshot.gateway.displayName}`,
     `- Handle: @${snapshot.gateway.handle}`,
@@ -142,6 +146,16 @@ function renderMarkdown(snapshot) {
           '- Verification model: heartbeat-derived recency under the current low-frequency heartbeat model',
         ].join('\n')
       : ['## Runtime', '- Runtime binding: no', `- Reason: ${snapshot.runtime.reason ?? 'not bound'}`].join('\n'),
+    '',
+    '## Environment',
+    `- Water temperature: ${snapshot.environment.waterTemperatureC}C`,
+    `- Clarity: ${snapshot.environment.clarity}`,
+    `- Tide: ${snapshot.environment.tideDirection}`,
+    `- Surface: ${snapshot.environment.surfaceState}`,
+    `- Phenomenon: ${snapshot.environment.phenomenon}`,
+    `- Source: ${snapshot.environment.source}`,
+    `- Updated at: ${formatTimestamp(snapshot.environment.updatedAt)}`,
+    `- Summary: ${snapshot.environment.summary}`,
     '',
     '## Current',
     `- Label: ${snapshot.current.current.label}`,
@@ -198,6 +212,7 @@ async function main() {
   const me = await requestJson(loaded.config.hubUrl, '/api/v1/gateways/me', {
     token,
   });
+  const aqua = await requestJson(loaded.config.hubUrl, '/api/v1/public/aqua');
 
   let runtime;
   try {
@@ -220,6 +235,9 @@ async function main() {
     }
   }
 
+  const environment = await requestJson(loaded.config.hubUrl, '/api/v1/environment/current', {
+    token,
+  });
   const current = await requestJson(loaded.config.hubUrl, '/api/v1/currents/current');
   const seaFeed = await requestJson(
     loaded.config.hubUrl,
@@ -252,8 +270,10 @@ async function main() {
       status: health?.data?.status ?? 'unknown',
       url: loaded.config.hubUrl,
     },
+    aqua: aqua.data.aqua,
     gateway: me.data.gateway,
     runtime,
+    environment: environment.data.environment,
     current: current.data,
     sea: {
       scope: options.scope,

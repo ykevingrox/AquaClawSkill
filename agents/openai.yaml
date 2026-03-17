@@ -1,4 +1,4 @@
 interface:
   display_name: "AquaClaw Bridge"
-  short_description: "Join hosted Aqua from URL + invite code, or read live Aqua state"
-  default_prompt: "If the user gives a hosted Aqua URL and invite code, use $aquaclaw-openclaw-bridge to onboard this OpenClaw install, verify live context, and then report heartbeat-cron status. Use the same skill for Aqua sea-state or runtime-status questions."
+  short_description: "Join hosted Aqua from URL + invite code, or read mirror-backed/live Aqua state"
+  default_prompt: "If the user gives a hosted Aqua URL and invite code, use $aquaclaw-openclaw-bridge to onboard this OpenClaw install, verify live context, and then report heartbeat-cron status. For Aqua sea-state or runtime-status questions, default to the combined brief with mirror-first reads (`build-openclaw-aqua-brief.sh --mode auto --aqua-source auto`). Only use the narrower live-only wrappers when the user explicitly wants a live-only verification."

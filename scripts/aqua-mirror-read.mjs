@@ -1,0 +1,508 @@
+#!/usr/bin/env node
+
+import { access, readFile } from 'node:fs/promises';
+import process from 'node:process';
+import { pathToFileURL } from 'node:url';
+
+import { loadMirrorState, resolveMirrorPaths } from './aqua-mirror-common.mjs';
+import {
+  formatTimestamp,
+  parseArgValue,
+  parsePositiveInt,
+  resolveHostedConfigPath,
+  resolveWorkspaceRoot,
+} from './hosted-aqua-common.mjs';
+
+export const DEFAULT_MIRROR_MAX_AGE_SECONDS = 20 * 60;
+export const MIRROR_EXIT_CODE_MISSING = 11;
+export const MIRROR_EXIT_CODE_STALE = 12;
+export const MIRROR_EXIT_CODE_MODE_MISMATCH = 13;
+
+const VALID_FORMATS = new Set(['json', 'markdown']);
+const VALID_EXPECT_MODES = new Set(['any', 'auto', 'local', 'hosted']);
+
+function printHelp() {
+  console.log(`Usage: aqua-mirror-read.mjs [options]
+
+Options:
+  --workspace-root <path>        OpenClaw workspace root
+  --config-path <path>           Hosted Aqua config path, used when --expect-mode auto
+  --mirror-dir <path>            Mirror root directory
+  --state-file <path>            Mirror state file override
+  --expect-mode <mode>           any|auto|hosted|local (default: any)
+  --format <fmt>                 json|markdown (default: markdown)
+  --max-age-seconds <n>          Freshness window for mirror reads (default: ${DEFAULT_MIRROR_MAX_AGE_SECONDS})
+  --fresh-only                   Fail if the mirror is older than --max-age-seconds
+  --help                         Show this message
+
+Notes:
+  - This command reads the local OpenClaw-owned mirror, not live Aqua APIs.
+  - In --fresh-only mode, stale mirrors exit with code ${MIRROR_EXIT_CODE_STALE}.
+  - Missing mirror snapshots exit with code ${MIRROR_EXIT_CODE_MISSING}.
+`);
+}
+
+export function formatDurationSeconds(value) {
+  if (!Number.isFinite(value) || value < 0) {
+    return 'n/a';
+  }
+
+  const total = Math.floor(value);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const parts = [];
+
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (minutes > 0 || hours > 0) {
+    parts.push(`${minutes}m`);
+  }
+  parts.push(`${seconds}s`);
+  return parts.join(' ');
+}
+
+function parseOptions(argv) {
+  const options = {
+    configPath: process.env.AQUACLAW_HOSTED_CONFIG || null,
+    expectMode: 'any',
+    format: 'markdown',
+    freshOnly: false,
+    maxAgeSeconds: Number.parseInt(
+      process.env.AQUACLAW_MIRROR_MAX_AGE_SECONDS || String(DEFAULT_MIRROR_MAX_AGE_SECONDS),
+      10,
+    ),
+    mirrorDir: process.env.AQUACLAW_MIRROR_DIR || null,
+    stateFile: process.env.AQUACLAW_MIRROR_STATE_FILE || null,
+    workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT || null,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === '--help') {
+      printHelp();
+      process.exit(0);
+    }
+    if (arg === '--fresh-only') {
+      options.freshOnly = true;
+      continue;
+    }
+    if (arg.startsWith('--workspace-root')) {
+      options.workspaceRoot = parseArgValue(argv, index, arg, '--workspace-root').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--config-path')) {
+      options.configPath = parseArgValue(argv, index, arg, '--config-path').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--mirror-dir')) {
+      options.mirrorDir = parseArgValue(argv, index, arg, '--mirror-dir').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--state-file')) {
+      options.stateFile = parseArgValue(argv, index, arg, '--state-file').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--expect-mode')) {
+      options.expectMode = parseArgValue(argv, index, arg, '--expect-mode').trim().toLowerCase();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--format')) {
+      options.format = parseArgValue(argv, index, arg, '--format').trim().toLowerCase();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--max-age-seconds')) {
+      options.maxAgeSeconds = parsePositiveInt(
+        parseArgValue(argv, index, arg, '--max-age-seconds'),
+        '--max-age-seconds',
+      );
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+
+    throw new Error(`unknown option: ${arg}`);
+  }
+
+  if (!VALID_FORMATS.has(options.format)) {
+    throw new Error('format must be json or markdown');
+  }
+  if (!VALID_EXPECT_MODES.has(options.expectMode)) {
+    throw new Error('expect-mode must be one of: any, auto, local, hosted');
+  }
+  if (!Number.isFinite(options.maxAgeSeconds) || options.maxAgeSeconds < 1) {
+    throw new Error('--max-age-seconds must be a positive integer');
+  }
+
+  return options;
+}
+
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveExpectedMode(options) {
+  if (options.expectMode === 'any') {
+    return null;
+  }
+  if (options.expectMode === 'local' || options.expectMode === 'hosted') {
+    return options.expectMode;
+  }
+
+  const hostedConfigPath = resolveHostedConfigPath({
+    workspaceRoot: options.workspaceRoot,
+    configPath: options.configPath || undefined,
+  });
+  return (await fileExists(hostedConfigPath)) ? 'hosted' : 'local';
+}
+
+function parseIsoTimestamp(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+export function pickMirrorReferenceTimestamp(snapshot, state) {
+  const candidates = [
+    snapshot?.generatedAt,
+    state?.mirror?.lastContextSyncAt,
+    state?.stream?.lastEventAt,
+    state?.stream?.lastHelloAt,
+    state?.updatedAt,
+  ]
+    .map((value) => ({
+      raw: value,
+      parsed: parseIsoTimestamp(value),
+    }))
+    .filter((candidate) => candidate.parsed !== null)
+    .sort((left, right) => left.parsed.getTime() - right.parsed.getTime());
+
+  return candidates.length ? candidates.at(-1).parsed.toISOString() : null;
+}
+
+function renderCollectionMarkdown(title, items, formatter) {
+  if (!items?.length) {
+    return [title, '- None'].join('\n');
+  }
+
+  return [title, ...items.map(formatter)].join('\n');
+}
+
+function normalizeCurrent(current) {
+  if (!current || typeof current !== 'object') {
+    return null;
+  }
+  if (current.current && typeof current.current === 'object') {
+    return current.current;
+  }
+  return current;
+}
+
+function preferNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+    if (value !== null && value !== undefined && typeof value !== 'string') {
+      return value;
+    }
+  }
+  return null;
+}
+
+function resolveViewer(snapshot, state) {
+  if (snapshot?.mode === 'hosted') {
+    const gateway = snapshot.gateway && typeof snapshot.gateway === 'object' ? snapshot.gateway : {};
+    const viewer = state?.viewer && typeof state.viewer === 'object' ? state.viewer : {};
+    return {
+      kind: 'gateway',
+      id: preferNonEmpty(gateway.id, viewer.id),
+      handle: preferNonEmpty(gateway.handle, viewer.handle),
+      displayName: preferNonEmpty(gateway.displayName, viewer.displayName),
+    };
+  }
+
+  const owner =
+    snapshot?.owner?.host ??
+    snapshot?.owner?.owner ??
+    snapshot?.owner?.user ??
+    (snapshot?.owner && typeof snapshot.owner === 'object' ? snapshot.owner : {});
+  const viewer = state?.viewer && typeof state.viewer === 'object' ? state.viewer : {};
+
+  return {
+    kind: 'host',
+    id: preferNonEmpty(owner?.id, viewer.id),
+    handle: preferNonEmpty(owner?.handle, viewer.handle),
+    displayName: preferNonEmpty(owner?.displayName, viewer.displayName),
+  };
+}
+
+function buildWarnings(snapshot, state, freshness) {
+  const warnings = [];
+  if (freshness.status !== 'fresh') {
+    warnings.push(
+      `Mirror freshness is stale: last usable sync signal was ${formatTimestamp(freshness.referenceAt)} (${formatDurationSeconds(freshness.ageSeconds)} old).`,
+    );
+  }
+
+  if (state?.stream?.lastError?.message) {
+    warnings.push(
+      `Last mirror stream error at ${formatTimestamp(state.stream.lastError.at)}: ${state.stream.lastError.message}`,
+    );
+  }
+
+  if (state?.stream?.lastResyncRequiredAt) {
+    warnings.push(
+      `Mirror stream requested resync at ${formatTimestamp(state.stream.lastResyncRequiredAt)}. Phase 1 mirror backfill does not reconstruct every missed historical sea delivery.`,
+    );
+  }
+
+  const runtime = snapshot?.runtime;
+  const runtimeRecord = runtime?.runtime ?? runtime;
+  if (runtime?.bound && runtimeRecord?.status && runtimeRecord.status !== 'online') {
+    warnings.push(
+      'The mirrored runtime is bound but not currently marked online. Do not describe this as the Claw definitely being in the sea right now.',
+    );
+  }
+
+  return warnings;
+}
+
+export function buildMirrorReadResult({
+  paths,
+  snapshot,
+  state,
+  expectedMode = null,
+  maxAgeSeconds = DEFAULT_MIRROR_MAX_AGE_SECONDS,
+  now = new Date(),
+}) {
+  const referenceAt = pickMirrorReferenceTimestamp(snapshot, state);
+  const referenceDate = parseIsoTimestamp(referenceAt);
+  const nowDate = now instanceof Date ? now : new Date(now);
+  const ageSeconds =
+    referenceDate === null ? null : Math.max(0, Math.floor((nowDate.getTime() - referenceDate.getTime()) / 1000));
+  const freshness = {
+    status: ageSeconds !== null && ageSeconds <= maxAgeSeconds ? 'fresh' : 'stale',
+    maxAgeSeconds,
+    ageSeconds,
+    referenceAt,
+    lastContextSyncAt: state?.mirror?.lastContextSyncAt ?? snapshot?.generatedAt ?? null,
+    lastSeaDeliveryAt: state?.stream?.lastEventAt ?? null,
+    lastHelloAt: state?.stream?.lastHelloAt ?? null,
+    stateUpdatedAt: state?.updatedAt ?? null,
+  };
+  const viewer = resolveViewer(snapshot, state);
+  const warnings = buildWarnings(snapshot, state, freshness);
+
+  return {
+    source: 'mirror',
+    mode: snapshot?.mode ?? state?.mode ?? null,
+    expectedMode,
+    mirror: {
+      root: paths.mirrorRoot,
+      statePath: paths.statePath,
+      contextPath: paths.contextPath,
+    },
+    freshness,
+    viewer,
+    snapshot,
+    warnings,
+  };
+}
+
+function formatRecentDelivery(item, index) {
+  const event = item?.seaEvent ?? {};
+  return `${index + 1}. [${formatTimestamp(event.createdAt ?? item?.recordedAt)}] ${event.type ?? 'unknown'} - ${event.summary ?? event.id ?? 'no summary'}`;
+}
+
+export function renderMirrorMarkdown(result) {
+  const snapshot = result.snapshot ?? {};
+  const current = normalizeCurrent(snapshot.current);
+  const runtime = snapshot.runtime ?? {};
+  const runtimeRecord = runtime?.runtime ?? runtime;
+  const viewerLabel = result.mode === 'hosted' ? 'Gateway' : 'Host';
+  const viewerIdLabel = result.mode === 'hosted' ? 'Gateway id' : 'Host id';
+  const sections = [
+    '# Aqua Context',
+    `- Generated at: ${formatTimestamp(snapshot.generatedAt)}`,
+    `- Mode: ${result.mode ?? 'unknown'}`,
+    '- Source: mirror',
+    `- Mirror freshness: ${result.freshness.status}`,
+    `- Mirror age: ${formatDurationSeconds(result.freshness.ageSeconds)}`,
+    `- Freshness window: ${formatDurationSeconds(result.freshness.maxAgeSeconds)}`,
+    `- Mirror reference time: ${formatTimestamp(result.freshness.referenceAt)}`,
+    `- Last context sync: ${formatTimestamp(result.freshness.lastContextSyncAt)}`,
+    `- Last sea delivery: ${formatTimestamp(result.freshness.lastSeaDeliveryAt)}`,
+    `- Last stream hello: ${formatTimestamp(result.freshness.lastHelloAt)}`,
+    `- Mirror state updated: ${formatTimestamp(result.freshness.stateUpdatedAt)}`,
+    `- Mirror root: ${result.mirror.root}`,
+  ];
+
+  if (result.expectedMode) {
+    sections.push(`- Expected mode: ${result.expectedMode}`);
+  }
+
+  sections.push(
+    '',
+    '## Aqua',
+    `- Name: ${snapshot?.aqua?.displayName ?? 'n/a'}`,
+    `- Updated at: ${formatTimestamp(snapshot?.aqua?.updatedAt)}`,
+    '',
+    `## ${viewerLabel}`,
+    `- Display name: ${result.viewer?.displayName ?? 'n/a'}`,
+    `- Handle: ${result.viewer?.handle ? `@${result.viewer.handle}` : 'n/a'}`,
+    `- ${viewerIdLabel}: ${result.viewer?.id ?? 'n/a'}`,
+    '',
+    runtime?.bound
+      ? [
+          '## Runtime',
+          '- Runtime binding: yes',
+          `- Runtime: ${runtimeRecord?.runtimeId ?? runtimeRecord?.id ?? 'n/a'}`,
+          `- Installation: ${runtimeRecord?.installationId ?? 'n/a'}`,
+          `- Status: ${runtimeRecord?.status ?? 'unknown'}`,
+          `- Last heartbeat: ${formatTimestamp(runtimeRecord?.lastHeartbeatAt)}`,
+          `- Presence: ${runtime?.presence?.status ?? 'unknown'}`,
+        ].join('\n')
+      : ['## Runtime', '- Runtime binding: no', `- Reason: ${runtime?.reason ?? 'not bound'}`].join('\n'),
+    '',
+    '## Environment',
+    `- Water temperature: ${snapshot?.environment?.waterTemperatureC ?? 'n/a'}C`,
+    `- Clarity: ${snapshot?.environment?.clarity ?? 'n/a'}`,
+    `- Tide: ${snapshot?.environment?.tideDirection ?? 'n/a'}`,
+    `- Surface: ${snapshot?.environment?.surfaceState ?? 'n/a'}`,
+    `- Phenomenon: ${snapshot?.environment?.phenomenon ?? 'n/a'}`,
+    `- Source: ${snapshot?.environment?.source ?? 'n/a'}`,
+    `- Updated at: ${formatTimestamp(snapshot?.environment?.updatedAt)}`,
+    `- Summary: ${snapshot?.environment?.summary ?? 'n/a'}`,
+    '',
+    '## Current',
+    `- Label: ${current?.label ?? 'n/a'}`,
+    `- Tone: ${current?.tone ?? 'n/a'}`,
+    `- Source: ${current?.source ?? 'n/a'}`,
+    `- Window: ${formatTimestamp(current?.startsAt)} -> ${formatTimestamp(current?.endsAt)}`,
+    `- Summary: ${current?.summary ?? 'n/a'}`,
+    '',
+    renderCollectionMarkdown(
+      '## Recent Mirrored Deliveries',
+      Array.isArray(snapshot?.recentDeliveries) ? snapshot.recentDeliveries : [],
+      formatRecentDelivery,
+    ),
+  );
+
+  if (result.warnings.length > 0) {
+    sections.push('', '## Warnings', ...result.warnings.map((warning) => `- ${warning}`));
+  }
+
+  return sections.join('\n');
+}
+
+async function loadMirrorContextSnapshot(contextPath) {
+  let raw;
+  try {
+    raw = await readFile(contextPath, 'utf8');
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      const missing = new Error(`mirror context snapshot not found at ${contextPath}`);
+      missing.exitCode = MIRROR_EXIT_CODE_MISSING;
+      throw missing;
+    }
+    throw error;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`invalid JSON in mirror context snapshot at ${contextPath}`);
+  }
+}
+
+export async function runMirrorRead(rawOptions) {
+  const options = {
+    ...rawOptions,
+    workspaceRoot: resolveWorkspaceRoot(rawOptions.workspaceRoot),
+  };
+  const paths = resolveMirrorPaths({
+    workspaceRoot: options.workspaceRoot,
+    mirrorDir: options.mirrorDir,
+    stateFile: options.stateFile,
+  });
+  const state = await loadMirrorState(paths.statePath);
+  const snapshot = await loadMirrorContextSnapshot(paths.contextPath);
+  const expectedMode = await resolveExpectedMode(options);
+  const result = buildMirrorReadResult({
+    paths,
+    snapshot,
+    state,
+    expectedMode,
+    maxAgeSeconds: options.maxAgeSeconds,
+  });
+
+  if (expectedMode && result.mode && result.mode !== expectedMode) {
+    const mismatch = new Error(`mirror snapshot mode mismatch: expected ${expectedMode}, found ${result.mode}`);
+    mismatch.exitCode = MIRROR_EXIT_CODE_MODE_MISMATCH;
+    throw mismatch;
+  }
+
+  if (options.freshOnly && result.freshness.status !== 'fresh') {
+    const stale = new Error(
+      `mirror snapshot is stale: last usable sync signal was ${formatTimestamp(result.freshness.referenceAt)} (${formatDurationSeconds(result.freshness.ageSeconds)} old, freshness window ${formatDurationSeconds(result.freshness.maxAgeSeconds)})`,
+    );
+    stale.exitCode = MIRROR_EXIT_CODE_STALE;
+    throw stale;
+  }
+
+  return result;
+}
+
+async function main() {
+  const options = parseOptions(process.argv.slice(2));
+  const result = await runMirrorRead(options);
+
+  if (options.format === 'json') {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(renderMirrorMarkdown(result));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(typeof error === 'object' && error && 'exitCode' in error ? error.exitCode : 1);
+  }
+}
