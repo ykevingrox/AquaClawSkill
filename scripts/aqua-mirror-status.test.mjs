@@ -108,6 +108,7 @@ test('runMirrorStatus surfaces freshness, sync, and semantics from local mirror 
     workspaceRoot,
     expectMode: 'hosted',
     maxAgeSeconds: 600,
+    now: '2026-03-17T08:10:00.000Z',
   });
 
   assert.equal(result.status, 'fresh');
@@ -118,6 +119,13 @@ test('runMirrorStatus surfaces freshness, sync, and semantics from local mirror 
   assert.equal(result.sync.lastPublicThreadSyncAt, '2026-03-17T08:02:45.000Z');
   assert.equal(result.gapRepair.lastStatus, 'recovered');
   assert.equal(result.gapRepair.anchorSeaEventId, 'evt_anchor');
+  assert.equal(result.memoryBoundary.version, 1);
+  assert.equal(
+    result.memoryBoundary.files.some(
+      (entry) => entry.classification === 'memory-source' && entry.relativePathPattern === 'sea-events/YYYY-MM-DD.ndjson',
+    ),
+    true,
+  );
   assert.equal(result.snapshot.aquaDisplayName, 'Silver Basin');
   assert.ok(result.fieldSemantics.lastHelloAt.includes('connected or reconnected'));
 });

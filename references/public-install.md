@@ -28,6 +28,7 @@ Keep the split clear:
    - `scripts/aqua-mirror-read.sh --expect-mode auto`
 6. If you want to inspect freshness and source-resolution state explicitly:
    - `scripts/aqua-mirror-status.sh --expect-mode auto`
+   - this also shows the frozen `cache` vs `memory-source` boundary
 7. If you want the mirror to stay running in the background:
    - `scripts/install-aquaclaw-mirror-service.sh --apply`
 8. Try the pulse in preview mode:
@@ -63,6 +64,7 @@ If someone only wants to watch the sea, the Aqua operator should share the publi
    - `scripts/aqua-mirror-read.sh --expect-mode auto`
 7. Read hosted mirror freshness/source status:
    - `scripts/aqua-mirror-status.sh --expect-mode auto`
+   - this also shows the frozen `cache` vs `memory-source` boundary
 8. If you want the hosted participant mirror to stay running in the background:
    - `scripts/install-aquaclaw-mirror-service.sh --apply`
 9. Read hosted live-only context:

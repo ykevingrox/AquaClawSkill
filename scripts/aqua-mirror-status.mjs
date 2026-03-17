@@ -4,7 +4,7 @@ import { access, readFile } from 'node:fs/promises';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
-import { loadMirrorState, resolveMirrorPaths } from './aqua-mirror-common.mjs';
+import { buildMirrorMemoryBoundary, loadMirrorState, resolveMirrorPaths } from './aqua-mirror-common.mjs';
 import {
   buildMirrorReadResult,
   DEFAULT_MIRROR_MAX_AGE_SECONDS,
@@ -227,13 +227,23 @@ function deriveStatus(readResult, statePresent, contextPresent) {
   return readResult.freshness.status;
 }
 
-function buildMirrorStatusResult({ paths, snapshot, state, expectedMode, maxAgeSeconds, statePresent, contextPresent }) {
+function buildMirrorStatusResult({
+  paths,
+  snapshot,
+  state,
+  expectedMode,
+  maxAgeSeconds,
+  now,
+  statePresent,
+  contextPresent,
+}) {
   const readResult = buildMirrorReadResult({
     paths,
     snapshot,
     state,
     expectedMode,
     maxAgeSeconds,
+    now,
   });
 
   return {
@@ -251,6 +261,7 @@ function buildMirrorStatusResult({ paths, snapshot, state, expectedMode, maxAgeS
     stream: readResult.stream,
     sync: readResult.sync,
     gapRepair: readResult.gapRepair,
+    memoryBoundary: buildMirrorMemoryBoundary(paths),
     snapshot: buildSnapshotSummary(snapshot),
     viewer: readResult.viewer,
     sourceLabels: SOURCE_LABELS,
@@ -260,6 +271,8 @@ function buildMirrorStatusResult({ paths, snapshot, state, expectedMode, maxAgeS
 }
 
 function renderMirrorStatusMarkdown(result) {
+  const cacheFiles = result.memoryBoundary.files.filter((entry) => entry.classification === 'cache');
+  const memorySourceFiles = result.memoryBoundary.files.filter((entry) => entry.classification === 'memory-source');
   const sections = [
     '# Aqua Mirror Status',
     `- Generated at: ${formatTimestamp(result.generatedAt)}`,
@@ -316,6 +329,26 @@ function renderMirrorStatusMarkdown(result) {
         : 'none'
     }`,
     '',
+    '## Memory Boundary',
+    `- Boundary version: ${result.memoryBoundary.version}`,
+    `- Cache retention: ${result.memoryBoundary.retention.cache}`,
+    `- Memory-source retention: ${result.memoryBoundary.retention['memory-source']}`,
+    `- Compaction baseline: ${result.memoryBoundary.compaction.baseline}`,
+    `- Redaction baseline: ${result.memoryBoundary.redaction.baseline}`,
+    `- Persona boundary: ${result.memoryBoundary.redaction.personaBoundary}`,
+    '',
+    '### Cache Files',
+    ...cacheFiles.map(
+      (entry) =>
+        `- ${entry.relativePathPattern}: ${entry.purpose} [retention=${entry.retentionPolicy}; rule=${entry.compactionRule}]`,
+    ),
+    '',
+    '### Memory-Source Files',
+    ...memorySourceFiles.map(
+      (entry) =>
+        `- ${entry.relativePathPattern}: ${entry.purpose} [retention=${entry.retentionPolicy}; rule=${entry.compactionRule}]`,
+    ),
+    '',
     '## Snapshot Summary',
     `- Snapshot available: ${result.snapshot.available ? 'yes' : 'no'}`,
     `- Aqua name: ${result.snapshot.aquaDisplayName ?? 'n/a'}`,
@@ -361,6 +394,7 @@ export async function runMirrorStatus(rawOptions) {
     state,
     expectedMode,
     maxAgeSeconds: options.maxAgeSeconds,
+    now: options.now,
     statePresent,
     contextPresent,
   });

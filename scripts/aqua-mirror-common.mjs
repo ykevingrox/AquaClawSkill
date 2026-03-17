@@ -12,6 +12,87 @@ export const DEFAULT_SEA_EVENTS_RELATIVE_PATH = path.join('sea-events');
 export const DEFAULT_CONVERSATIONS_RELATIVE_PATH = path.join('conversations');
 export const DEFAULT_PUBLIC_THREADS_RELATIVE_PATH = path.join('public-threads');
 export const DEFAULT_RECENT_DELIVERY_LIMIT = 20;
+export const MIRROR_MEMORY_BOUNDARY_VERSION = 1;
+export const MIRROR_MEMORY_BOUNDARY_BASELINE = Object.freeze({
+  version: MIRROR_MEMORY_BOUNDARY_VERSION,
+  classes: Object.freeze({
+    cache:
+      'Rebuildable operational mirror state. Scripts may overwrite these files in place, and losing them should not destroy the underlying autobiographical signal.',
+    'memory-source':
+      'Raw local autobiographical input owned by this OpenClaw install. Keep by default; future sea diary or memory synthesis should derive from these files instead of live-only reads.',
+  }),
+  retention: Object.freeze({
+    cache: 'keep_latest_only',
+    'memory-source': 'retain_by_default_until_explicit_archive_or_redaction',
+  }),
+  compaction: Object.freeze({
+    baseline:
+      'Compaction may create derivative summaries or archives, but current scripts must not silently delete raw memory-source files.',
+    implemented: false,
+  }),
+  redaction: Object.freeze({
+    baseline:
+      'Do not publish raw mirror files by default. Review and redact participant message bodies, handles, gateway ids, and any machine-local secrets before sharing outside the local machine.',
+    personaBoundary:
+      'Workspace persona files such as SOUL.md, USER.md, TOOLS.md, and MEMORY.md must stay separate from mirror files.',
+  }),
+});
+export const MIRROR_MEMORY_FILE_POLICIES = Object.freeze([
+  Object.freeze({
+    key: 'state',
+    classification: 'cache',
+    relativePathPattern: DEFAULT_STATE_FILE_NAME,
+    retentionPolicy: 'replace_latest',
+    purpose: 'Operational cursor, freshness, gap-repair, and sync state.',
+    compactionRule: 'No historical retention requirement; overwrite in place.',
+    redactionRule: 'Do not share raw because it may reveal local runtime linkage or recent mirror internals.',
+  }),
+  Object.freeze({
+    key: 'context_snapshot',
+    classification: 'cache',
+    relativePathPattern: DEFAULT_CONTEXT_RELATIVE_PATH,
+    retentionPolicy: 'replace_latest',
+    purpose: 'Latest mirror-backed aquarium snapshot for brief reads and status explanation.',
+    compactionRule: 'Keep only the newest snapshot; rebuildable from live APIs plus recent mirror state.',
+    redactionRule: 'Review before sharing because it may expose participant-visible runtime or environment context.',
+  }),
+  Object.freeze({
+    key: 'conversation_index',
+    classification: 'cache',
+    relativePathPattern: DEFAULT_CONVERSATION_INDEX_RELATIVE_PATH,
+    retentionPolicy: 'replace_latest',
+    purpose: 'Latest hosted participant DM inbox summary used to target thread refresh.',
+    compactionRule: 'Keep only the newest index snapshot.',
+    redactionRule: 'Treat as private social metadata; do not publish raw.',
+  }),
+  Object.freeze({
+    key: 'sea_events',
+    classification: 'memory-source',
+    relativePathPattern: path.join(DEFAULT_SEA_EVENTS_RELATIVE_PATH, 'YYYY-MM-DD.ndjson'),
+    retentionPolicy: 'append_only_retain',
+    purpose: 'Append-only raw visible event history and the primary future sea-diary input.',
+    compactionRule: 'Future compaction may create summaries, but raw event logs should remain until explicit archive/redaction.',
+    redactionRule: 'Review before sharing because event summaries can reveal private or friend-scoped social activity.',
+  }),
+  Object.freeze({
+    key: 'conversation_threads',
+    classification: 'memory-source',
+    relativePathPattern: path.join(DEFAULT_CONVERSATIONS_RELATIVE_PATH, '<conversation-id>.json'),
+    retentionPolicy: 'replace_latest_per_thread',
+    purpose: 'Materialized visible DM thread history for future autobiographical synthesis.',
+    compactionRule: 'May be archived or summarized later, but raw thread files are memory-source by default.',
+    redactionRule: 'Private social content; never share raw without explicit review and redaction.',
+  }),
+  Object.freeze({
+    key: 'public_threads',
+    classification: 'memory-source',
+    relativePathPattern: path.join(DEFAULT_PUBLIC_THREADS_RELATIVE_PATH, '<root-expression-id>.json'),
+    retentionPolicy: 'replace_latest_per_thread',
+    purpose: 'Materialized visible public-thread history relevant to this Claw.',
+    compactionRule: 'May be summarized later; raw thread files remain the source layer by default.',
+    redactionRule: 'Still review before sharing because replies may reveal handles, timing, and local curation choices.',
+  }),
+]);
 
 export function resolveMirrorPaths({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
@@ -32,6 +113,39 @@ export function resolveMirrorPaths({
     conversationsDir: path.join(resolvedMirrorRoot, DEFAULT_CONVERSATIONS_RELATIVE_PATH),
     conversationIndexPath: path.join(resolvedMirrorRoot, DEFAULT_CONVERSATION_INDEX_RELATIVE_PATH),
     publicThreadsDir: path.join(resolvedMirrorRoot, DEFAULT_PUBLIC_THREADS_RELATIVE_PATH),
+  };
+}
+
+function resolveBoundaryRelativePath(paths, key, relativePathPattern) {
+  if (!paths) {
+    return relativePathPattern;
+  }
+
+  switch (key) {
+    case 'state':
+      return relativeMirrorPath(paths, paths.statePath);
+    case 'context_snapshot':
+      return relativeMirrorPath(paths, paths.contextPath);
+    case 'conversation_index':
+      return relativeMirrorPath(paths, paths.conversationIndexPath);
+    case 'sea_events':
+      return path.join(path.relative(paths.mirrorRoot, paths.seaEventsDir), 'YYYY-MM-DD.ndjson');
+    case 'conversation_threads':
+      return path.join(path.relative(paths.mirrorRoot, paths.conversationsDir), '<conversation-id>.json');
+    case 'public_threads':
+      return path.join(path.relative(paths.mirrorRoot, paths.publicThreadsDir), '<root-expression-id>.json');
+    default:
+      return relativePathPattern;
+  }
+}
+
+export function buildMirrorMemoryBoundary(paths = null) {
+  return {
+    ...MIRROR_MEMORY_BOUNDARY_BASELINE,
+    files: MIRROR_MEMORY_FILE_POLICIES.map((policy) => ({
+      ...policy,
+      relativePathPattern: resolveBoundaryRelativePath(paths, policy.key, policy.relativePathPattern),
+    })),
   };
 }
 

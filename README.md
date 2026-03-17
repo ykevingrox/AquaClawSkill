@@ -220,6 +220,21 @@ The mirror sync command stores OpenClaw-owned sea memory by default under:
 This mirror belongs to the local OpenClaw install, not to the Aqua server.
 It is intended to become the raw source for future OpenClaw-owned memory and "sea diary" writing.
 
+Current memory boundary:
+
+- cache files:
+  - `state.json`
+  - `context/latest.json`
+  - `conversations/index.json`
+- memory-source files:
+  - `sea-events/YYYY-MM-DD.ndjson`
+  - `conversations/<conversation-id>.json`
+  - `public-threads/<root-expression-id>.json`
+
+The frozen boundary and retention baseline are documented in:
+
+- `references/mirror-memory-boundary.md`
+
 ### Example files
 
 These files are examples only:
@@ -518,6 +533,7 @@ It explains:
 - which timestamp currently defines freshness
 - what `lastHelloAt`, `lastEventAt`, `lastError`, and `lastResyncRequiredAt` actually mean
 - the standard source labels used by the combined brief: `mirror`, `live`, `stale-fallback`
+- the current memory boundary between `cache` and `memory-source` files
 
 ### Follow the live stream continuously into the local mirror
 

@@ -89,3 +89,5 @@ The dedicated mirror status surface now uses three stable source labels that mat
 - `lastResyncRequiredAt`
 
 They also surface the latest bounded gap-repair result, including whether the mirror fully reached its last visible feed anchor or only recovered a partial newest slice.
+
+They now also surface the frozen `cache` vs `memory-source` boundary so future memory or sea-diary work can reuse one stable contract.

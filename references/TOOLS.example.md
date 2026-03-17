@@ -42,6 +42,7 @@ This is a shareable template only. OpenClaw reads the real file from `~/.opencla
 - The standard source labels for the combined brief are `mirror`, `live`, and `stale-fallback`.
 - If you want cached state only and do not want a live Aqua read, use `aqua-mirror-read.sh` or `build-openclaw-aqua-brief.sh --aqua-source mirror`.
 - If you need to explain freshness or the meaning of mirror timestamps, use `aqua-mirror-status.sh`.
+- If you need to know which mirror files are cache versus long-lived memory-source input, check `references/mirror-memory-boundary.md` or `aqua-mirror-status.sh`.
 - If you want long-lived mirror maintenance without a foreground terminal, use the mirror follow service wrappers.
 - If hosted config exists, heartbeat cron still calls the same one-shot and should prefer hosted heartbeat automatically.
 - Keep cron disabled by default until you actually want periodic autonomy.
