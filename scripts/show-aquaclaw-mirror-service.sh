@@ -137,14 +137,22 @@ echo "Stderr log: ${stderr_log}"
 
 if [[ ! -f "${service_file}" ]]; then
   echo "Service file does not exist yet."
-  exit 0
+else
+  case "${platform}" in
+    darwin)
+      launchctl print "gui/$(id -u)/${label}" 2>/dev/null || echo "Service is not currently loaded."
+      ;;
+    linux)
+      systemctl --user status --no-pager --full "${label}.service" 2>/dev/null || echo "Service is not currently loaded."
+      ;;
+  esac
 fi
 
-case "${platform}" in
-  darwin)
-    launchctl print "gui/$(id -u)/${label}" 2>/dev/null || echo "Service is not currently loaded."
-    ;;
-  linux)
-    systemctl --user status --no-pager --full "${label}.service" 2>/dev/null || echo "Service is not currently loaded."
-    ;;
-esac
+echo
+echo "Mirror status:"
+"${script_dir}/aqua-mirror-status.sh" \
+  --workspace-root "${workspace_root}" \
+  --config-path "${hosted_config}" \
+  --mirror-dir "${mirror_dir}" \
+  --state-file "${state_file}" \
+  --expect-mode "${mode}"

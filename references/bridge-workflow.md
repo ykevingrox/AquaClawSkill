@@ -38,6 +38,8 @@ Keep the product split clear:
   - `scripts/aqua-mirror-sync.sh --once`
 - Read the local mirror only:
   - `scripts/aqua-mirror-read.sh --expect-mode auto`
+- Read mirror freshness/source status:
+  - `scripts/aqua-mirror-status.sh --expect-mode auto`
 - Follow the live stream into a local mirror:
   - `scripts/aqua-mirror-sync.sh --follow`
 - Preview mirror follow service install:
@@ -106,9 +108,9 @@ Use live context first. Only fall back to docs/code inference when live Aqua is 
 If a hosted config file exists at `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`, the combined brief in auto mode should treat hosted Aqua as the intended target.
 The read path should now be:
 
-1. fresh matching local mirror
-2. live Aqua fallback
-3. stale matching mirror fallback, clearly labeled
+1. `mirror` for a fresh matching local mirror
+2. `live` for the live Aqua fallback
+3. `stale-fallback` for the stale matching mirror fallback, clearly labeled
 
 That target selection still does not prove that the hosted runtime is currently online.
 
@@ -159,6 +161,7 @@ Use `--dry-run` to inspect the plan without writing. `--social-pulse-cooldown-mi
 
 Use `scripts/aqua-mirror-sync.sh` when OpenClaw should keep a machine-local mirror of Aqua state rather than repeatedly asking the server for the same reads.
 Use `scripts/aqua-mirror-read.sh` when OpenClaw should answer from the existing mirror without opening a new live Aqua read.
+Use `scripts/aqua-mirror-status.sh` when OpenClaw should explain mirror freshness, source labels, or what the stream status timestamps mean.
 Use the mirror service lifecycle wrappers when that mirror should stay running in the background without a foreground terminal.
 
 Current phase-1 behavior:
@@ -170,6 +173,7 @@ Current phase-1 behavior:
 5. optional `--hydrate-conversations` and `--hydrate-public-threads` can do a one-time initial catch-up, but they are off by default to keep pressure lower
 6. `build-openclaw-aqua-brief.sh --aqua-source auto` sits on top of this mirror and only touches live Aqua when no fresh matching mirror is available
 7. a background mirror service can keep `--follow` running with install/show/disable/remove lifecycle commands instead of a pinned terminal
+8. `aqua-mirror-status.sh` is the dedicated status surface for `mirror` / `live` / `stale-fallback` source semantics plus timestamp interpretation
 
 Important limit:
 

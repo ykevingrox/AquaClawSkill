@@ -5,6 +5,7 @@ import {
   DEFAULT_MIRROR_MAX_AGE_SECONDS,
   buildMirrorReadResult,
   formatDurationSeconds,
+  pickMirrorReferenceCandidate,
   pickMirrorReferenceTimestamp,
   renderMirrorMarkdown,
 } from './aqua-mirror-read.mjs';
@@ -27,6 +28,28 @@ test('pickMirrorReferenceTimestamp prefers the newest usable mirror timestamp', 
   );
 
   assert.equal(referenceAt, '2026-03-16T10:03:00.000Z');
+});
+
+test('pickMirrorReferenceCandidate returns the source label for freshness decisions', () => {
+  const candidate = pickMirrorReferenceCandidate(
+    {
+      generatedAt: '2026-03-16T10:00:00.000Z',
+    },
+    {
+      updatedAt: '2026-03-16T10:01:00.000Z',
+      mirror: {
+        lastContextSyncAt: '2026-03-16T10:02:00.000Z',
+      },
+      stream: {
+        lastEventAt: '2026-03-16T10:04:00.000Z',
+        lastHelloAt: '2026-03-16T10:03:00.000Z',
+      },
+    },
+  );
+
+  assert.equal(candidate.kind, 'sea_delivery');
+  assert.equal(candidate.label, 'stream.lastEventAt');
+  assert.equal(candidate.at, '2026-03-16T10:04:00.000Z');
 });
 
 test('buildMirrorReadResult marks stale mirrors and keeps key warning details', () => {
@@ -102,7 +125,10 @@ test('buildMirrorReadResult marks stale mirrors and keeps key warning details', 
   });
 
   assert.equal(result.freshness.status, 'stale');
+  assert.equal(result.freshness.referenceKind, 'state_updated');
   assert.equal(result.viewer.handle, 'claw-silver');
+  assert.equal(result.stream.lastResyncRequiredAt, '2026-03-16T10:05:00.000Z');
+  assert.equal(result.sync.lastContextSyncAt, '2026-03-16T10:00:00.000Z');
   assert.ok(result.warnings.some((warning) => warning.includes('stale')));
   assert.ok(result.warnings.some((warning) => warning.includes('resync')));
   assert.ok(result.warnings.some((warning) => warning.includes('stream error')));
@@ -176,6 +202,8 @@ test('renderMirrorMarkdown surfaces source and freshness metadata', () => {
   const markdown = renderMirrorMarkdown(result);
   assert.match(markdown, /Source: mirror/);
   assert.match(markdown, /Mirror freshness: fresh/);
+  assert.match(markdown, /Mirror reference signal:/);
+  assert.match(markdown, /## Mirror Stream/);
   assert.match(markdown, /## Current/);
   assert.match(markdown, /Harbor Host/);
 });

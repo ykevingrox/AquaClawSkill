@@ -21,6 +21,17 @@ export const MIRROR_EXIT_CODE_MODE_MISMATCH = 13;
 const VALID_FORMATS = new Set(['json', 'markdown']);
 const VALID_EXPECT_MODES = new Set(['any', 'auto', 'local', 'hosted']);
 
+export const MIRROR_STREAM_FIELD_SEMANTICS = Object.freeze({
+  lastHelloAt:
+    'Last time stream/sea sent a hello frame. This proves the mirror connected or reconnected, not that a new sea delivery arrived.',
+  lastEventAt:
+    'Last time this machine mirrored a visible sea delivery into local files. This is the strongest signal that new sea activity was actually recorded.',
+  lastError:
+    'Most recent stream/read failure seen by the follow loop. It may be transient if the mirror later reconnected successfully.',
+  lastResyncRequiredAt:
+    'Last time the stream reported that the stored cursor could not be replayed cleanly. Phase-1 repair refreshes snapshots and visible threads, but it does not reconstruct every missed historical delivery.',
+});
+
 function printHelp() {
   console.log(`Usage: aqua-mirror-read.mjs [options]
 
@@ -61,6 +72,13 @@ export function formatDurationSeconds(value) {
   }
   parts.push(`${seconds}s`);
   return parts.join(' ');
+}
+
+function formatLastError(lastError) {
+  if (!lastError?.message) {
+    return 'none';
+  }
+  return `${lastError.message} @ ${formatTimestamp(lastError.at)}`;
 }
 
 function parseOptions(argv) {
@@ -195,21 +213,56 @@ function parseIsoTimestamp(value) {
 }
 
 export function pickMirrorReferenceTimestamp(snapshot, state) {
+  const candidate = pickMirrorReferenceCandidate(snapshot, state);
+  return candidate?.at ?? null;
+}
+
+export function pickMirrorReferenceCandidate(snapshot, state) {
   const candidates = [
-    snapshot?.generatedAt,
-    state?.mirror?.lastContextSyncAt,
-    state?.stream?.lastEventAt,
-    state?.stream?.lastHelloAt,
-    state?.updatedAt,
+    {
+      kind: 'context_generated',
+      label: 'context.generatedAt',
+      raw: snapshot?.generatedAt,
+    },
+    {
+      kind: 'context_sync',
+      label: 'mirror.lastContextSyncAt',
+      raw: state?.mirror?.lastContextSyncAt,
+    },
+    {
+      kind: 'sea_delivery',
+      label: 'stream.lastEventAt',
+      raw: state?.stream?.lastEventAt,
+    },
+    {
+      kind: 'stream_hello',
+      label: 'stream.lastHelloAt',
+      raw: state?.stream?.lastHelloAt,
+    },
+    {
+      kind: 'state_updated',
+      label: 'state.updatedAt',
+      raw: state?.updatedAt,
+    },
   ]
     .map((value) => ({
-      raw: value,
-      parsed: parseIsoTimestamp(value),
+      ...value,
+      parsed: parseIsoTimestamp(value.raw),
     }))
     .filter((candidate) => candidate.parsed !== null)
     .sort((left, right) => left.parsed.getTime() - right.parsed.getTime());
 
-  return candidates.length ? candidates.at(-1).parsed.toISOString() : null;
+  if (!candidates.length) {
+    return null;
+  }
+
+  const selected = candidates.at(-1);
+  return {
+    kind: selected.kind,
+    label: selected.label,
+    raw: selected.raw,
+    at: selected.parsed.toISOString(),
+  };
 }
 
 function renderCollectionMarkdown(title, items, formatter) {
@@ -272,9 +325,15 @@ function resolveViewer(snapshot, state) {
 function buildWarnings(snapshot, state, freshness) {
   const warnings = [];
   if (freshness.status !== 'fresh') {
-    warnings.push(
-      `Mirror freshness is stale: last usable sync signal was ${formatTimestamp(freshness.referenceAt)} (${formatDurationSeconds(freshness.ageSeconds)} old).`,
-    );
+    if (freshness.referenceAt) {
+      warnings.push(
+        `Mirror freshness is stale: last usable sync signal was ${formatTimestamp(freshness.referenceAt)} (${formatDurationSeconds(freshness.ageSeconds)} old).`,
+      );
+    } else {
+      warnings.push(
+        'Mirror has no usable sync signal yet. Run aqua-mirror-sync.sh --once or start the mirror follow service first.',
+      );
+    }
   }
 
   if (state?.stream?.lastError?.message) {
@@ -308,20 +367,42 @@ export function buildMirrorReadResult({
   maxAgeSeconds = DEFAULT_MIRROR_MAX_AGE_SECONDS,
   now = new Date(),
 }) {
-  const referenceAt = pickMirrorReferenceTimestamp(snapshot, state);
+  const reference = pickMirrorReferenceCandidate(snapshot, state);
+  const referenceAt = reference?.at ?? null;
   const referenceDate = parseIsoTimestamp(referenceAt);
   const nowDate = now instanceof Date ? now : new Date(now);
   const ageSeconds =
     referenceDate === null ? null : Math.max(0, Math.floor((nowDate.getTime() - referenceDate.getTime()) / 1000));
+  const stream = {
+    lastDeliveryId: state?.stream?.lastDeliveryId ?? null,
+    lastSeaEventId: state?.stream?.lastSeaEventId ?? null,
+    lastHelloAt: state?.stream?.lastHelloAt ?? null,
+    lastEventAt: state?.stream?.lastEventAt ?? null,
+    lastResyncRequiredAt: state?.stream?.lastResyncRequiredAt ?? null,
+    lastRejectedCursor: state?.stream?.lastRejectedCursor ?? null,
+    reconnectCount: state?.stream?.reconnectCount ?? 0,
+    resyncCount: state?.stream?.resyncCount ?? 0,
+    lastError: state?.stream?.lastError ?? null,
+  };
+  const sync = {
+    lastContextSyncAt: state?.mirror?.lastContextSyncAt ?? snapshot?.generatedAt ?? null,
+    lastConversationIndexSyncAt: state?.mirror?.lastConversationIndexSyncAt ?? null,
+    lastConversationThreadSyncAt: state?.mirror?.lastConversationThreadSyncAt ?? null,
+    lastPublicThreadSyncAt: state?.mirror?.lastPublicThreadSyncAt ?? null,
+    stateUpdatedAt: state?.updatedAt ?? null,
+  };
   const freshness = {
     status: ageSeconds !== null && ageSeconds <= maxAgeSeconds ? 'fresh' : 'stale',
     maxAgeSeconds,
     ageSeconds,
     referenceAt,
-    lastContextSyncAt: state?.mirror?.lastContextSyncAt ?? snapshot?.generatedAt ?? null,
-    lastSeaDeliveryAt: state?.stream?.lastEventAt ?? null,
-    lastHelloAt: state?.stream?.lastHelloAt ?? null,
-    stateUpdatedAt: state?.updatedAt ?? null,
+    referenceKind: reference?.kind ?? null,
+    referenceLabel: reference?.label ?? null,
+    snapshotAvailable: snapshot !== null,
+    lastContextSyncAt: sync.lastContextSyncAt,
+    lastSeaDeliveryAt: stream.lastEventAt,
+    lastHelloAt: stream.lastHelloAt,
+    stateUpdatedAt: sync.stateUpdatedAt,
   };
   const viewer = resolveViewer(snapshot, state);
   const warnings = buildWarnings(snapshot, state, freshness);
@@ -336,6 +417,9 @@ export function buildMirrorReadResult({
       contextPath: paths.contextPath,
     },
     freshness,
+    stream,
+    sync,
+    fieldSemantics: MIRROR_STREAM_FIELD_SEMANTICS,
     viewer,
     snapshot,
     warnings,
@@ -363,6 +447,8 @@ export function renderMirrorMarkdown(result) {
     `- Mirror age: ${formatDurationSeconds(result.freshness.ageSeconds)}`,
     `- Freshness window: ${formatDurationSeconds(result.freshness.maxAgeSeconds)}`,
     `- Mirror reference time: ${formatTimestamp(result.freshness.referenceAt)}`,
+    `- Mirror reference signal: ${result.freshness.referenceLabel ?? 'n/a'}`,
+    `- Mirror snapshot available: ${result.freshness.snapshotAvailable ? 'yes' : 'no'}`,
     `- Last context sync: ${formatTimestamp(result.freshness.lastContextSyncAt)}`,
     `- Last sea delivery: ${formatTimestamp(result.freshness.lastSeaDeliveryAt)}`,
     `- Last stream hello: ${formatTimestamp(result.freshness.lastHelloAt)}`,
@@ -375,6 +461,22 @@ export function renderMirrorMarkdown(result) {
   }
 
   sections.push(
+    '',
+    '## Mirror Stream',
+    `- Last stream hello: ${formatTimestamp(result.stream.lastHelloAt)}`,
+    `- Last sea delivery: ${formatTimestamp(result.stream.lastEventAt)}`,
+    `- Last resync_required: ${formatTimestamp(result.stream.lastResyncRequiredAt)}`,
+    `- Reconnect count: ${result.stream.reconnectCount ?? 0}`,
+    `- Resync count: ${result.stream.resyncCount ?? 0}`,
+    `- Last rejected cursor: ${result.stream.lastRejectedCursor ?? 'n/a'}`,
+    `- Last stream error: ${formatLastError(result.stream.lastError)}`,
+    '',
+    '## Mirror Sync',
+    `- Last context sync: ${formatTimestamp(result.sync.lastContextSyncAt)}`,
+    `- Last conversation index sync: ${formatTimestamp(result.sync.lastConversationIndexSyncAt)}`,
+    `- Last conversation thread sync: ${formatTimestamp(result.sync.lastConversationThreadSyncAt)}`,
+    `- Last public thread sync: ${formatTimestamp(result.sync.lastPublicThreadSyncAt)}`,
+    `- Mirror state updated: ${formatTimestamp(result.sync.stateUpdatedAt)}`,
     '',
     '## Aqua',
     `- Name: ${snapshot?.aqua?.displayName ?? 'n/a'}`,

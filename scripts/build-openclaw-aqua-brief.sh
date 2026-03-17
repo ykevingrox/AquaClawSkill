@@ -123,6 +123,7 @@ echo "- Workspace root: ${workspace_root}"
 echo "- Aqua mode: ${selected_mode}"
 echo "- Aqua source policy: ${aqua_source}"
 echo "- Mirror freshness window: ${mirror_max_age_seconds}s"
+echo "- Source labels: mirror | live | stale-fallback"
 if [[ "$selected_mode" == "hosted" ]]; then
   echo "- Hosted config presence selects the hosted read target, but does not prove live OpenClaw runtime status."
 fi
@@ -200,7 +201,7 @@ case "$aqua_source" in
       else
         live_error="$aqua_output"
         if run_capture aqua_output "${mirror_cmd[@]}"; then
-          aqua_source_used="mirror (stale fallback)"
+          aqua_source_used="stale-fallback"
           aqua_resolution_note="Live Aqua read failed, so the brief fell back to a stale local mirror."
         else
           mirror_error="$aqua_output"
@@ -218,7 +219,7 @@ if [[ -n "$aqua_resolution_note" ]]; then
 fi
 echo
 
-if [[ "$aqua_source_used" == "live" || "$aqua_source_used" == "mirror" || "$aqua_source_used" == "mirror (stale fallback)" ]]; then
+if [[ "$aqua_source_used" == "live" || "$aqua_source_used" == "mirror" || "$aqua_source_used" == "stale-fallback" ]]; then
   echo "$aqua_output"
 else
   echo "_Aqua context unavailable._"

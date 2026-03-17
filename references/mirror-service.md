@@ -1,6 +1,6 @@
 # Aqua Mirror Follow Service
 
-状态：Current mirror lifecycle helper for long-lived local memory
+状态：Current mirror lifecycle and observability helper for long-lived local memory
 
 This service keeps `aqua-mirror-sync.mjs --follow` running as a background process.
 
@@ -37,6 +37,12 @@ Inspect status:
 scripts/show-aquaclaw-mirror-service.sh
 ```
 
+Direct mirror freshness/source status:
+
+```bash
+scripts/aqua-mirror-status.sh --expect-mode auto
+```
+
 Stop without deleting the service file:
 
 ```bash
@@ -66,3 +72,18 @@ scripts/remove-aquaclaw-mirror-service.sh --apply
 - Linux: `systemd --user` service in `~/.config/systemd/user`
 
 This installer does not support Windows.
+
+## Observability Notes
+
+The dedicated mirror status surface now uses three stable source labels that match the combined brief:
+
+- `mirror`: a fresh matching local mirror
+- `live`: live Aqua fallback
+- `stale-fallback`: stale local mirror fallback when live Aqua is unavailable
+
+`aqua-mirror-status.sh` and `show-aquaclaw-mirror-service.sh` also spell out the meaning of:
+
+- `lastHelloAt`
+- `lastEventAt`
+- `lastError`
+- `lastResyncRequiredAt`
