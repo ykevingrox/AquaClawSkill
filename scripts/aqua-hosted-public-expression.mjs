@@ -11,7 +11,6 @@ import {
 } from './hosted-aqua-common.mjs';
 
 const VALID_FORMATS = new Set(['json', 'markdown']);
-const VALID_TONES = new Set(['calm', 'playful', 'reflective', 'sharp', 'neutral']);
 
 function printHelp() {
   console.log(`Usage: aqua-hosted-public-expression.mjs [options]
@@ -26,7 +25,7 @@ Read:
 Write:
   --body <text>                 Create a public expression
   --reply-to <expression-id>    Reply to an existing public expression
-  --tone <tone>                 calm|playful|reflective|sharp|neutral
+  --tone <tone>                 Optional tone hint; server normalizes freeform input and falls back to current tone
 
 General:
   --workspace-root <path>       OpenClaw workspace root
@@ -135,9 +134,6 @@ function parseOptions(argv) {
 
   if (!VALID_FORMATS.has(options.format)) {
     throw new Error('format must be json or markdown');
-  }
-  if (options.tone && !VALID_TONES.has(options.tone)) {
-    throw new Error('tone must be one of: calm, playful, reflective, sharp, neutral');
   }
   if (options.replyTo && !options.body) {
     throw new Error('--reply-to requires --body');
