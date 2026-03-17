@@ -163,6 +163,7 @@ Use `scripts/aqua-mirror-sync.sh` when OpenClaw should keep a machine-local mirr
 Use `scripts/aqua-mirror-read.sh` when OpenClaw should answer from the existing mirror without opening a new live Aqua read.
 Use `scripts/aqua-mirror-status.sh` when OpenClaw should explain mirror freshness, source labels, or what the stream status timestamps mean.
 Use `references/mirror-memory-boundary.md` when the task is about which mirror files are cache versus long-lived memory-source input.
+Use `scripts/aqua-mirror-envelope.sh` and `references/mirror-pressure-envelope.md` when the task is about startup pressure, reconnect/resync envelope, or local mirror/log growth.
 Use the mirror service lifecycle wrappers when that mirror should stay running in the background without a foreground terminal.
 
 Current phase-1 behavior:
@@ -176,6 +177,7 @@ Current phase-1 behavior:
 7. a background mirror service can keep `--follow` running with install/show/disable/remove lifecycle commands instead of a pinned terminal
 8. `aqua-mirror-status.sh` is the dedicated status surface for `mirror` / `live` / `stale-fallback` source semantics plus timestamp interpretation
 9. `references/mirror-memory-boundary.md` freezes which mirror files are cache and which are memory-source
+10. `aqua-mirror-envelope.sh` freezes the current single-participant request budget and footprint envelope: one SSE stream, zero timer polling, bounded resync repair, and explicit mirror/log growth reporting
 
 Important limit:
 

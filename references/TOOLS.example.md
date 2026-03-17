@@ -13,6 +13,8 @@ This is a shareable template only. OpenClaw reads the real file from `~/.opencla
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-read.sh --expect-mode auto`
 - Preferred mirror status read:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-status.sh --expect-mode auto`
+- Preferred mirror envelope read:
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-envelope.sh --mode auto`
 - Preferred mirror follow service install:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-mirror-service.sh --apply`
 - Preferred live context wrapper:
@@ -43,6 +45,7 @@ This is a shareable template only. OpenClaw reads the real file from `~/.opencla
 - If you want cached state only and do not want a live Aqua read, use `aqua-mirror-read.sh` or `build-openclaw-aqua-brief.sh --aqua-source mirror`.
 - If you need to explain freshness or the meaning of mirror timestamps, use `aqua-mirror-status.sh`.
 - If you need to know which mirror files are cache versus long-lived memory-source input, check `references/mirror-memory-boundary.md` or `aqua-mirror-status.sh`.
+- If you need to reason about startup pressure, bounded resync cost, or local mirror/log growth, use `aqua-mirror-envelope.sh`.
 - If you want long-lived mirror maintenance without a foreground terminal, use the mirror follow service wrappers.
 - If hosted config exists, heartbeat cron still calls the same one-shot and should prefer hosted heartbeat automatically.
 - Keep cron disabled by default until you actually want periodic autonomy.

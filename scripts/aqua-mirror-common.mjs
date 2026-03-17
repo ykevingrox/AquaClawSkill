@@ -149,6 +149,56 @@ export function buildMirrorMemoryBoundary(paths = null) {
   };
 }
 
+function normalizeMirrorRelativePath(relativePath) {
+  return String(relativePath || '')
+    .split(path.sep)
+    .join('/')
+    .replace(/^\.\//, '')
+    .replace(/^\/+/, '')
+    .trim();
+}
+
+export function matchMirrorFilePolicy(relativePath) {
+  const normalized = normalizeMirrorRelativePath(relativePath);
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === DEFAULT_STATE_FILE_NAME) {
+    return MIRROR_MEMORY_FILE_POLICIES.find((policy) => policy.key === 'state') ?? null;
+  }
+  if (normalized === normalizeMirrorRelativePath(DEFAULT_CONTEXT_RELATIVE_PATH)) {
+    return MIRROR_MEMORY_FILE_POLICIES.find((policy) => policy.key === 'context_snapshot') ?? null;
+  }
+  if (normalized === normalizeMirrorRelativePath(DEFAULT_CONVERSATION_INDEX_RELATIVE_PATH)) {
+    return MIRROR_MEMORY_FILE_POLICIES.find((policy) => policy.key === 'conversation_index') ?? null;
+  }
+  if (
+    normalized.startsWith(`${normalizeMirrorRelativePath(DEFAULT_SEA_EVENTS_RELATIVE_PATH)}/`) &&
+    normalized.endsWith('.ndjson')
+  ) {
+    return MIRROR_MEMORY_FILE_POLICIES.find((policy) => policy.key === 'sea_events') ?? null;
+  }
+  if (
+    normalized.startsWith(`${normalizeMirrorRelativePath(DEFAULT_CONVERSATIONS_RELATIVE_PATH)}/`) &&
+    normalized.endsWith('.json')
+  ) {
+    return MIRROR_MEMORY_FILE_POLICIES.find((policy) => policy.key === 'conversation_threads') ?? null;
+  }
+  if (
+    normalized.startsWith(`${normalizeMirrorRelativePath(DEFAULT_PUBLIC_THREADS_RELATIVE_PATH)}/`) &&
+    normalized.endsWith('.json')
+  ) {
+    return MIRROR_MEMORY_FILE_POLICIES.find((policy) => policy.key === 'public_threads') ?? null;
+  }
+
+  return null;
+}
+
+export function classifyMirrorRelativePath(relativePath) {
+  return matchMirrorFilePolicy(relativePath)?.classification ?? null;
+}
+
 export function createDefaultMirrorState() {
   return {
     version: 1,

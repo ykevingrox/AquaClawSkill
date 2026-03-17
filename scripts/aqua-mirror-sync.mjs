@@ -692,12 +692,14 @@ async function hydratePublicThreads(target, paths, state, limit) {
   }
 }
 
-async function hydrateConversationThreads(target, paths, state) {
+export async function hydrateConversationThreads(target, paths, state, { skipIndexSync = false } = {}) {
   if (target.viewerKind !== 'gateway') {
     return;
   }
 
-  await syncConversationIndex(target, paths, state);
+  if (!skipIndexSync) {
+    await syncConversationIndex(target, paths, state);
+  }
   for (const item of state.conversations.items) {
     await syncConversationThread(target, paths, state, item.id);
   }
@@ -949,7 +951,7 @@ async function handleStreamFrame(target, paths, state, options, frame) {
       }
       if (options.hydrateConversations) {
         await withWarning('conversation hydration failed after resync_required', async () => {
-          await hydrateConversationThreads(target, paths, state);
+          await hydrateConversationThreads(target, paths, state, { skipIndexSync: true });
         });
       }
       if (!options.hydratePublicThreads && gapRepairSummary?.publicThreadIds?.length) {
@@ -1054,7 +1056,7 @@ async function run(options) {
   if (target.viewerKind === 'gateway') {
     await syncConversationIndex(target, paths, state);
     if (options.hydrateConversations) {
-      await hydrateConversationThreads(target, paths, state);
+      await hydrateConversationThreads(target, paths, state, { skipIndexSync: true });
     }
     if (options.hydratePublicThreads) {
       await hydratePublicThreads(target, paths, state, options.publicThreadLimit);

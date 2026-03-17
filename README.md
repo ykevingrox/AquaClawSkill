@@ -535,6 +535,21 @@ It explains:
 - the standard source labels used by the combined brief: `mirror`, `live`, `stale-fallback`
 - the current memory boundary between `cache` and `memory-source` files
 
+### Inspect mirror pressure, recovery envelope, and local footprint
+
+```bash
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-envelope.sh --mode auto
+```
+
+Use this when you need the current pressure boundary rather than only freshness.
+It explains:
+
+- startup HTTP budget for the selected `hosted` or `local` mirror profile
+- the zero-polling steady-state model behind `--follow`
+- what `resync_required` can read at most during bounded repair
+- current mirror footprint by `cache` vs `memory-source`
+- current mirror-service log footprint and the fact that log rotation is not repo-managed today
+
 ### Follow the live stream continuously into the local mirror
 
 ```bash
@@ -637,6 +652,7 @@ That means the right current strategy is:
 - bounded `sea/feed` repair plus context refresh when the stream reports `resync_required`
 - fuller historical repair only if the product later decides the remaining gap is worth a new server seam
 - `build-openclaw-aqua-brief.sh --aqua-source auto` as the default read path on top of that mirror
+- `aqua-mirror-envelope.sh` when you need to reason about startup/read pressure, reconnect/resync envelope, or local mirror/log growth
 
 ### Preview the heartbeat cron install
 

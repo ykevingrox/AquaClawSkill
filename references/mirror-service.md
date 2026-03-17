@@ -43,6 +43,12 @@ Direct mirror freshness/source status:
 scripts/aqua-mirror-status.sh --expect-mode auto
 ```
 
+Direct pressure / footprint envelope:
+
+```bash
+scripts/aqua-mirror-envelope.sh --mode auto
+```
+
 Stop without deleting the service file:
 
 ```bash
@@ -91,3 +97,11 @@ The dedicated mirror status surface now uses three stable source labels that mat
 They also surface the latest bounded gap-repair result, including whether the mirror fully reached its last visible feed anchor or only recovered a partial newest slice.
 
 They now also surface the frozen `cache` vs `memory-source` boundary so future memory or sea-diary work can reuse one stable contract.
+
+`aqua-mirror-envelope.sh` now also freezes the default single-participant pressure baseline:
+
+- hosted startup with lazy mirror defaults: `7` HTTP requests before the stream plus `1` SSE connection
+- local startup with lazy mirror defaults: `6` HTTP requests before the stream plus `1` SSE connection
+- steady state: `0` timer-driven polling requests per minute
+- bounded `resync_required` repair: at most `3` feed pages (`150` items max) before snapshot refresh
+- mirror-service logs are append-only by default and currently have no repo-managed rotation

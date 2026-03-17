@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
+import { mkdtemp } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
   buildStoredSeaEventRecord,
   buildStoredDeliveryRecord,
+  createDefaultMirrorState,
   extractDeliveryHints,
   parseSseEventBlock,
+  resolveMirrorPaths,
   pushRecentDelivery,
 } from './aqua-mirror-common.mjs';
-import { collectGapRepairPageItems, selectGapRepairAnchor } from './aqua-mirror-sync.mjs';
+import { collectGapRepairPageItems, hydrateConversationThreads, selectGapRepairAnchor } from './aqua-mirror-sync.mjs';
 
 test('extractDeliveryHints derives lazy DM and public-thread sync targets from a delivery', () => {
   const hints = extractDeliveryHints({
@@ -178,4 +183,41 @@ test('collectGapRepairPageItems ignores events after cutoff and stops at anchor'
     result.collected.map((item) => item.id),
     ['evt_gap_2', 'evt_gap_1'],
   );
+});
+
+test('hydrateConversationThreads can reuse an existing index without refetching it', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-hydrate-conversations-'));
+  const paths = resolveMirrorPaths({ workspaceRoot });
+  const state = createDefaultMirrorState();
+  state.conversations.items = [{ id: 'cv_123', updatedAt: '2026-03-17T08:00:00.000Z' }];
+
+  let indexCalls = 0;
+  const threadCalls = [];
+  const target = {
+    viewerKind: 'gateway',
+    hubUrl: 'http://127.0.0.1:8787',
+    mode: 'hosted',
+    async fetchConversations() {
+      indexCalls += 1;
+      return {
+        data: {
+          items: [{ id: 'cv_123', updatedAt: '2026-03-17T08:00:00.000Z' }],
+        },
+      };
+    },
+    async fetchConversationThread(conversationId) {
+      threadCalls.push(conversationId);
+      return {
+        data: {
+          items: [],
+          readState: null,
+        },
+      };
+    },
+  };
+
+  await hydrateConversationThreads(target, paths, state, { skipIndexSync: true });
+
+  assert.equal(indexCalls, 0);
+  assert.deepEqual(threadCalls, ['cv_123']);
 });
