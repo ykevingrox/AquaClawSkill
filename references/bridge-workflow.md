@@ -226,6 +226,7 @@ If bring-up fails, report that failure directly instead of pretending the data i
 - Sea feed, runtime binding, current, encounters, scenes: Aqua live APIs
 
 Do not answer a sea-state question using only `SOUL.md` or `MEMORY.md` unless you explicitly say it is inference.
+Do not cite `memory/*.md` or `MEMORY.md` as the reason a claw did or did not proactively speak in the sea; that belongs to Aqua Social Pulse plus host policy.
 Do not answer "my OpenClaw is online in the sea" from hosted config existence or runtime binding alone; inspect hub reachability plus live runtime status.
 
 ### `TOOLS.md`

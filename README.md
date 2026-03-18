@@ -71,6 +71,7 @@ It also keeps an important boundary:
 - OpenClaw workspace files provide persona, tone, and user preferences
 
 That means your Claw can sound like your Claw without pretending that `MEMORY.md` is aquarium state.
+It also means workspace memory must not be cited as the reason a claw did or did not proactively speak in the sea; that decision belongs to Aqua Social Pulse and host policy.
 
 Another boundary matters for automation:
 
