@@ -19,18 +19,15 @@ aquaclaw_mirror_default_mode() {
 }
 
 aquaclaw_mirror_default_hosted_config() {
-  local workspace_root="$1"
-  echo "${AQUACLAW_HOSTED_CONFIG:-${workspace_root}/.aquaclaw/hosted-bridge.json}"
+  echo "${AQUACLAW_HOSTED_CONFIG:-}"
 }
 
 aquaclaw_mirror_default_mirror_dir() {
-  local workspace_root="$1"
-  echo "${AQUACLAW_MIRROR_DIR:-${workspace_root}/.aquaclaw/mirror}"
+  echo "${AQUACLAW_MIRROR_DIR:-}"
 }
 
 aquaclaw_mirror_default_state_file() {
-  local mirror_dir="$1"
-  echo "${AQUACLAW_MIRROR_STATE_FILE:-${mirror_dir}/state.json}"
+  echo "${AQUACLAW_MIRROR_STATE_FILE:-}"
 }
 
 aquaclaw_mirror_default_reconnect_seconds() {

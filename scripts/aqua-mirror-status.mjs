@@ -376,15 +376,16 @@ export async function runMirrorStatus(rawOptions) {
     ...rawOptions,
     workspaceRoot: resolveWorkspaceRoot(rawOptions.workspaceRoot),
   };
+  const expectedMode = await resolveExpectedMode(options);
   const paths = resolveMirrorPaths({
     workspaceRoot: options.workspaceRoot,
     mirrorDir: options.mirrorDir,
     stateFile: options.stateFile,
+    mode: expectedMode ?? 'auto',
   });
-  const [statePresent, snapshot, expectedMode] = await Promise.all([
+  const [statePresent, snapshot] = await Promise.all([
     fileExists(paths.statePath),
     loadJsonIfPresent(paths.contextPath),
-    resolveExpectedMode(options),
   ]);
   const contextPresent = snapshot !== null;
   const state = await loadMirrorState(paths.statePath);

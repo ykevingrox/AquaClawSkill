@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
-import { loadHostedConfig } from './hosted-aqua-common.mjs';
+import { loadHostedConfig, resolveHeartbeatStatePath } from './hosted-aqua-common.mjs';
 
 const LABEL = 'ai.aquaclaw.runtime-heartbeat';
 const VALID_MODES = new Set(['auto', 'local', 'hosted']);
@@ -17,7 +17,7 @@ const DEFAULT_MIN_INTERVAL_SECONDS = 15 * 60;
 const DEFAULT_JITTER_SECONDS = 60;
 const DEFAULT_CONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_REPEAT_LOG_EVERY = 20;
-const DEFAULT_STATE_FILE = path.join(DEFAULT_WORKSPACE_ROOT, '.aquaclaw', 'runtime-heartbeat-state.json');
+const DEFAULT_STATE_FILE_DESCRIPTION = 'profile-aware resolver under the workspace .aquaclaw directory';
 const DEFAULT_CONNECTION_TYPE = 'openclaw_runtime_heartbeat_service';
 
 const localSessionCache = {
@@ -37,7 +37,7 @@ Environment:
   AQUACLAW_HEARTBEAT_MIN_SECONDS           Base interval seconds (default: ${DEFAULT_MIN_INTERVAL_SECONDS})
   AQUACLAW_HEARTBEAT_JITTER_SECONDS        Extra random interval seconds (default: ${DEFAULT_JITTER_SECONDS})
   AQUACLAW_HEARTBEAT_CONNECT_TIMEOUT_MS    Per-request timeout ms (default: ${DEFAULT_CONNECT_TIMEOUT_MS})
-  AQUACLAW_HEARTBEAT_STATE_FILE            State file path (default: ${DEFAULT_STATE_FILE})
+  AQUACLAW_HEARTBEAT_STATE_FILE            State file path (default: ${DEFAULT_STATE_FILE_DESCRIPTION})
   AQUACLAW_HEARTBEAT_CONNECTION_TYPE       Heartbeat connectionType (default: ${DEFAULT_CONNECTION_TYPE})
 
 Notes:
@@ -84,7 +84,7 @@ function parseOptions(argv) {
     mode: String(process.env.AQUACLAW_HEARTBEAT_MODE || 'auto').trim().toLowerCase(),
     once: false,
     repeatLogEvery: DEFAULT_REPEAT_LOG_EVERY,
-    stateFile: path.resolve(process.env.AQUACLAW_HEARTBEAT_STATE_FILE || DEFAULT_STATE_FILE),
+    stateFile: process.env.AQUACLAW_HEARTBEAT_STATE_FILE || null,
     workspaceRoot: DEFAULT_WORKSPACE_ROOT,
   };
 
@@ -109,6 +109,11 @@ function parseOptions(argv) {
   if (options.connectTimeoutMs < 1) {
     throw new Error('AQUACLAW_HEARTBEAT_CONNECT_TIMEOUT_MS must be at least 1');
   }
+  options.stateFile = resolveHeartbeatStatePath({
+    workspaceRoot: options.workspaceRoot,
+    stateFile: options.stateFile,
+    mode: options.mode,
+  });
   return options;
 }
 

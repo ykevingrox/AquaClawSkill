@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises
 import path from 'node:path';
 import process from 'node:process';
 
-import { resolveWorkspaceRoot } from './hosted-aqua-common.mjs';
+import { resolveMirrorRootPath, resolveWorkspaceRoot } from './hosted-aqua-common.mjs';
 
 export const DEFAULT_MIRROR_RELATIVE_DIR = path.join('.aquaclaw', 'mirror');
 export const DEFAULT_STATE_FILE_NAME = 'state.json';
@@ -98,11 +98,16 @@ export function resolveMirrorPaths({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
   mirrorDir = process.env.AQUACLAW_MIRROR_DIR,
   stateFile = process.env.AQUACLAW_MIRROR_STATE_FILE,
+  mode = 'auto',
 } = {}) {
   const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
   const resolvedMirrorRoot = stateFile
     ? path.dirname(path.resolve(stateFile))
-    : path.resolve(mirrorDir ?? path.join(resolvedWorkspaceRoot, DEFAULT_MIRROR_RELATIVE_DIR));
+    : resolveMirrorRootPath({
+        workspaceRoot: resolvedWorkspaceRoot,
+        mirrorDir,
+        mode,
+      });
 
   return {
     workspaceRoot: resolvedWorkspaceRoot,

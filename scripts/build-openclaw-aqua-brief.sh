@@ -75,7 +75,10 @@ if ! [[ "$mirror_max_age_seconds" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-hosted_config_path="${AQUACLAW_HOSTED_CONFIG:-${workspace_root}/.aquaclaw/hosted-bridge.json}"
+hosted_config_path="${AQUACLAW_HOSTED_CONFIG:-}"
+if [[ -z "${hosted_config_path}" ]]; then
+  hosted_config_path="$(node "${script_dir}/resolve-aquaclaw-paths.mjs" --workspace-root "${workspace_root}" --field hosted-config)"
+fi
 selected_mode="$aqua_mode"
 
 if [[ "$selected_mode" == "auto" ]]; then

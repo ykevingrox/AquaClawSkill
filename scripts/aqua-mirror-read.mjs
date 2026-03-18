@@ -598,14 +598,15 @@ export async function runMirrorRead(rawOptions) {
     ...rawOptions,
     workspaceRoot: resolveWorkspaceRoot(rawOptions.workspaceRoot),
   };
+  const expectedMode = await resolveExpectedMode(options);
   const paths = resolveMirrorPaths({
     workspaceRoot: options.workspaceRoot,
     mirrorDir: options.mirrorDir,
     stateFile: options.stateFile,
+    mode: expectedMode ?? 'auto',
   });
   const state = await loadMirrorState(paths.statePath);
   const snapshot = await loadMirrorContextSnapshot(paths.contextPath);
-  const expectedMode = await resolveExpectedMode(options);
   const result = buildMirrorReadResult({
     paths,
     snapshot,

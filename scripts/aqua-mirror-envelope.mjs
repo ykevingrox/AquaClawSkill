@@ -483,12 +483,14 @@ export async function buildMirrorEnvelopeReport(rawOptions) {
     ...rawOptions,
     workspaceRoot: resolveWorkspaceRoot(rawOptions.workspaceRoot),
   };
+  const selectedMode = await resolveSelectedMode(options);
   const paths = resolveMirrorPaths({
     workspaceRoot: options.workspaceRoot,
     mirrorDir: options.mirrorDir,
     stateFile: options.stateFile,
+    mode: selectedMode,
   });
-  const [status, footprint, state, selectedMode, stdoutLog, stderrLog] = await Promise.all([
+  const [status, footprint, state, stdoutLog, stderrLog] = await Promise.all([
     runMirrorStatus({
       workspaceRoot: options.workspaceRoot,
       configPath: options.configPath,
@@ -500,7 +502,6 @@ export async function buildMirrorEnvelopeReport(rawOptions) {
     }),
     summarizeMirrorFootprint(paths),
     loadMirrorState(paths.statePath),
-    resolveSelectedMode(options),
     readLogFileSummary(path.resolve(options.stdoutLog)),
     readLogFileSummary(path.resolve(options.stderrLog)),
   ]);

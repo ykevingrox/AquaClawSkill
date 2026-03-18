@@ -1,14 +1,38 @@
 #!/usr/bin/env node
 
 import { randomBytes } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
 export const DEFAULT_WORKSPACE_ROOT = path.join(os.homedir(), '.openclaw', 'workspace');
-const DEFAULT_HOSTED_CONFIG_RELATIVE_PATH = path.join('.aquaclaw', 'hosted-bridge.json');
-const DEFAULT_HOSTED_PULSE_STATE_RELATIVE_PATH = path.join('.aquaclaw', 'hosted-pulse-state.json');
+export const DEFAULT_AQUACLAW_STATE_RELATIVE_DIR = '.aquaclaw';
+export const DEFAULT_HOSTED_CONFIG_FILE_NAME = 'hosted-bridge.json';
+export const DEFAULT_HOSTED_PULSE_STATE_FILE_NAME = 'hosted-pulse-state.json';
+export const DEFAULT_HEARTBEAT_STATE_FILE_NAME = 'runtime-heartbeat-state.json';
+export const DEFAULT_MIRROR_DIR_NAME = 'mirror';
+export const DEFAULT_ACTIVE_PROFILE_FILE_NAME = 'active-profile.json';
+export const ACTIVE_HOSTED_PROFILE_POINTER_VERSION = 1;
+const DEFAULT_HOSTED_CONFIG_RELATIVE_PATH = path.join(
+  DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
+  DEFAULT_HOSTED_CONFIG_FILE_NAME,
+);
+const DEFAULT_HOSTED_PULSE_STATE_RELATIVE_PATH = path.join(
+  DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
+  DEFAULT_HOSTED_PULSE_STATE_FILE_NAME,
+);
+const DEFAULT_HEARTBEAT_STATE_RELATIVE_PATH = path.join(
+  DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
+  DEFAULT_HEARTBEAT_STATE_FILE_NAME,
+);
+const DEFAULT_MIRROR_RELATIVE_DIR = path.join(DEFAULT_AQUACLAW_STATE_RELATIVE_DIR, DEFAULT_MIRROR_DIR_NAME);
+const DEFAULT_ACTIVE_PROFILE_RELATIVE_PATH = path.join(
+  DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
+  DEFAULT_ACTIVE_PROFILE_FILE_NAME,
+);
+const DEFAULT_PROFILES_RELATIVE_DIR = path.join(DEFAULT_AQUACLAW_STATE_RELATIVE_DIR, 'profiles');
 
 export function parseArgValue(argv, index, current, label) {
   if (current.includes('=')) {
@@ -84,22 +108,288 @@ export function resolveWorkspaceRoot(raw = process.env.OPENCLAW_WORKSPACE_ROOT) 
   return path.resolve(value);
 }
 
+export function resolveAquaclawStateRoot(workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT) {
+  return path.join(resolveWorkspaceRoot(workspaceRoot), DEFAULT_AQUACLAW_STATE_RELATIVE_DIR);
+}
+
+export function resolveActiveHostedProfilePath({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+} = {}) {
+  return path.join(resolveWorkspaceRoot(workspaceRoot), DEFAULT_ACTIVE_PROFILE_RELATIVE_PATH);
+}
+
+export function resolveHostedProfilesRoot({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+} = {}) {
+  return path.join(resolveWorkspaceRoot(workspaceRoot), DEFAULT_PROFILES_RELATIVE_DIR);
+}
+
+export function slugifySegment(value, fallback) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return normalized || fallback;
+}
+
+export function buildHostedProfileId(baseUrl) {
+  const host = new URL(normalizeBaseUrl(baseUrl)).host;
+  return `hosted-${slugifySegment(host, 'hosted-default')}`;
+}
+
+export function resolveHostedProfilePaths({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  profileId,
+} = {}) {
+  if (typeof profileId !== 'string' || !profileId.trim()) {
+    throw new Error('profileId is required');
+  }
+
+  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
+  const resolvedProfileId = profileId.trim();
+  const profileRoot = path.join(
+    resolveHostedProfilesRoot({ workspaceRoot: resolvedWorkspaceRoot }),
+    resolvedProfileId,
+  );
+
+  return {
+    workspaceRoot: resolvedWorkspaceRoot,
+    profileId: resolvedProfileId,
+    profileRoot,
+    configPath: path.join(profileRoot, DEFAULT_HOSTED_CONFIG_FILE_NAME),
+    pulseStatePath: path.join(profileRoot, DEFAULT_HOSTED_PULSE_STATE_FILE_NAME),
+    heartbeatStatePath: path.join(profileRoot, DEFAULT_HEARTBEAT_STATE_FILE_NAME),
+    mirrorRoot: path.join(profileRoot, DEFAULT_MIRROR_DIR_NAME),
+    activeProfilePath: resolveActiveHostedProfilePath({ workspaceRoot: resolvedWorkspaceRoot }),
+  };
+}
+
+function readJsonFileSyncIfPresent(filePath) {
+  try {
+    const raw = readFileSync(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+    if (error instanceof SyntaxError) {
+      throw new Error(`invalid JSON at ${filePath}`);
+    }
+    throw error;
+  }
+}
+
+function normalizeActiveHostedProfilePointer(pointer, pointerPath) {
+  if (!pointer || typeof pointer !== 'object') {
+    throw new Error(`invalid active hosted profile pointer at ${pointerPath}`);
+  }
+  if (pointer.version !== ACTIVE_HOSTED_PROFILE_POINTER_VERSION) {
+    throw new Error(`unsupported active hosted profile pointer version at ${pointerPath}`);
+  }
+  if (pointer.type !== 'hosted') {
+    throw new Error(`invalid active hosted profile pointer type at ${pointerPath}`);
+  }
+  if (typeof pointer.profileId !== 'string' || !pointer.profileId.trim()) {
+    throw new Error(`missing profileId in active hosted profile pointer at ${pointerPath}`);
+  }
+
+  return {
+    version: ACTIVE_HOSTED_PROFILE_POINTER_VERSION,
+    type: 'hosted',
+    profileId: pointer.profileId.trim(),
+    hubUrl: typeof pointer.hubUrl === 'string' && pointer.hubUrl.trim() ? pointer.hubUrl.trim() : null,
+    configPath:
+      typeof pointer.configPath === 'string' && pointer.configPath.trim() ? path.resolve(pointer.configPath) : null,
+    updatedAt: typeof pointer.updatedAt === 'string' && pointer.updatedAt.trim() ? pointer.updatedAt.trim() : null,
+  };
+}
+
+export function loadActiveHostedProfileSync({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+} = {}) {
+  const pointerPath = resolveActiveHostedProfilePath({ workspaceRoot });
+  const pointer = readJsonFileSyncIfPresent(pointerPath);
+  if (pointer === null) {
+    return {
+      pointer: null,
+      pointerPath,
+    };
+  }
+
+  return {
+    pointer: normalizeActiveHostedProfilePointer(pointer, pointerPath),
+    pointerPath,
+  };
+}
+
+export function parseHostedProfileIdFromConfigPath({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  configPath,
+} = {}) {
+  if (typeof configPath !== 'string' || !configPath.trim()) {
+    return null;
+  }
+
+  const resolvedConfigPath = path.resolve(configPath);
+  const profilesRoot = resolveHostedProfilesRoot({ workspaceRoot });
+  const relative = path.relative(profilesRoot, resolvedConfigPath);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null;
+  }
+
+  const parts = relative.split(path.sep).filter(Boolean);
+  if (parts.length === 2 && parts[1] === DEFAULT_HOSTED_CONFIG_FILE_NAME) {
+    return parts[0];
+  }
+
+  return null;
+}
+
+export function resolveHostedConfigSelection({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  configPath = process.env.AQUACLAW_HOSTED_CONFIG,
+} = {}) {
+  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
+  const explicit = typeof configPath === 'string' && configPath.trim() ? path.resolve(configPath.trim()) : null;
+
+  if (explicit) {
+    const profileId = parseHostedProfileIdFromConfigPath({
+      workspaceRoot: resolvedWorkspaceRoot,
+      configPath: explicit,
+    });
+    const profilePaths = profileId
+      ? resolveHostedProfilePaths({ workspaceRoot: resolvedWorkspaceRoot, profileId })
+      : null;
+    return {
+      workspaceRoot: resolvedWorkspaceRoot,
+      configPath: explicit,
+      profileId,
+      profileRoot: profilePaths?.profileRoot ?? null,
+      selectionKind: 'explicit',
+      activePointer: null,
+      activeProfilePath: resolveActiveHostedProfilePath({ workspaceRoot: resolvedWorkspaceRoot }),
+    };
+  }
+
+  const active = loadActiveHostedProfileSync({ workspaceRoot: resolvedWorkspaceRoot });
+  if (active.pointer?.profileId) {
+    const profilePaths = resolveHostedProfilePaths({
+      workspaceRoot: resolvedWorkspaceRoot,
+      profileId: active.pointer.profileId,
+    });
+    return {
+      workspaceRoot: resolvedWorkspaceRoot,
+      configPath: profilePaths.configPath,
+      profileId: profilePaths.profileId,
+      profileRoot: profilePaths.profileRoot,
+      selectionKind: 'active-profile',
+      activePointer: active.pointer,
+      activeProfilePath: active.pointerPath,
+    };
+  }
+
+  return {
+    workspaceRoot: resolvedWorkspaceRoot,
+    configPath: path.join(resolvedWorkspaceRoot, DEFAULT_HOSTED_CONFIG_RELATIVE_PATH),
+    profileId: null,
+    profileRoot: null,
+    selectionKind: 'legacy',
+    activePointer: active.pointer,
+    activeProfilePath: active.pointerPath,
+  };
+}
+
 export function resolveHostedConfigPath({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
   configPath = process.env.AQUACLAW_HOSTED_CONFIG,
 } = {}) {
-  const root = resolveWorkspaceRoot(workspaceRoot);
-  const explicit = typeof configPath === 'string' && configPath.trim() ? configPath.trim() : null;
-  return path.resolve(explicit ?? path.join(root, DEFAULT_HOSTED_CONFIG_RELATIVE_PATH));
+  return resolveHostedConfigSelection({
+    workspaceRoot,
+    configPath,
+  }).configPath;
 }
 
 export function resolveHostedPulseStatePath({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
   stateFile = process.env.AQUACLAW_HOSTED_PULSE_STATE,
 } = {}) {
-  const root = resolveWorkspaceRoot(workspaceRoot);
   const explicit = typeof stateFile === 'string' && stateFile.trim() ? stateFile.trim() : null;
-  return path.resolve(explicit ?? path.join(root, DEFAULT_HOSTED_PULSE_STATE_RELATIVE_PATH));
+  if (explicit) {
+    return path.resolve(explicit);
+  }
+
+  const selection = resolveHostedConfigSelection({
+    workspaceRoot,
+  });
+
+  if (selection.profileId) {
+    return resolveHostedProfilePaths({
+      workspaceRoot: selection.workspaceRoot,
+      profileId: selection.profileId,
+    }).pulseStatePath;
+  }
+
+  return path.join(selection.workspaceRoot, DEFAULT_HOSTED_PULSE_STATE_RELATIVE_PATH);
+}
+
+export function resolveHeartbeatStatePath({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  stateFile = process.env.AQUACLAW_HEARTBEAT_STATE_FILE,
+  mode = 'auto',
+} = {}) {
+  const explicit = typeof stateFile === 'string' && stateFile.trim() ? stateFile.trim() : null;
+  if (explicit) {
+    return path.resolve(explicit);
+  }
+
+  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
+  if (mode === 'local') {
+    return path.join(resolvedWorkspaceRoot, DEFAULT_HEARTBEAT_STATE_RELATIVE_PATH);
+  }
+
+  const selection = resolveHostedConfigSelection({
+    workspaceRoot: resolvedWorkspaceRoot,
+  });
+
+  if (selection.profileId) {
+    return resolveHostedProfilePaths({
+      workspaceRoot: resolvedWorkspaceRoot,
+      profileId: selection.profileId,
+    }).heartbeatStatePath;
+  }
+
+  return path.join(resolvedWorkspaceRoot, DEFAULT_HEARTBEAT_STATE_RELATIVE_PATH);
+}
+
+export function resolveMirrorRootPath({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  mirrorDir = process.env.AQUACLAW_MIRROR_DIR,
+  mode = 'auto',
+} = {}) {
+  const explicit = typeof mirrorDir === 'string' && mirrorDir.trim() ? mirrorDir.trim() : null;
+  if (explicit) {
+    return path.resolve(explicit);
+  }
+
+  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
+  if (mode === 'local') {
+    return path.join(resolvedWorkspaceRoot, DEFAULT_MIRROR_RELATIVE_DIR);
+  }
+
+  const selection = resolveHostedConfigSelection({
+    workspaceRoot: resolvedWorkspaceRoot,
+  });
+
+  if (selection.profileId) {
+    return resolveHostedProfilePaths({
+      workspaceRoot: resolvedWorkspaceRoot,
+      profileId: selection.profileId,
+    }).mirrorRoot;
+  }
+
+  return path.join(resolvedWorkspaceRoot, DEFAULT_MIRROR_RELATIVE_DIR);
 }
 
 function assertHostedConfigShape(config, configPath) {
@@ -127,11 +417,12 @@ export async function loadHostedConfig({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
   configPath = process.env.AQUACLAW_HOSTED_CONFIG,
 } = {}) {
-  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
-  const resolvedConfigPath = resolveHostedConfigPath({
-    workspaceRoot: resolvedWorkspaceRoot,
+  const selection = resolveHostedConfigSelection({
+    workspaceRoot,
     configPath,
   });
+  const resolvedWorkspaceRoot = selection.workspaceRoot;
+  const resolvedConfigPath = selection.configPath;
 
   let raw;
   try {
@@ -156,6 +447,9 @@ export async function loadHostedConfig({
     config,
     configPath: resolvedConfigPath,
     workspaceRoot: resolvedWorkspaceRoot,
+    profileId: selection.profileId ?? config?.profile?.id ?? null,
+    profileRoot: selection.profileRoot ?? null,
+    selectionKind: selection.selectionKind,
   };
 }
 
@@ -172,14 +466,64 @@ export async function saveHostedConfig(configPath, config) {
   } catch {}
 }
 
-function slugifySegment(value, fallback) {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+async function saveJsonFileAtomically(filePath, payload) {
+  await mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  await rename(tempPath, filePath);
+  try {
+    await chmod(filePath, 0o600);
+  } catch {}
+}
 
-  return normalized || fallback;
+export async function saveActiveHostedProfile({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  profileId,
+  hubUrl = null,
+  configPath = null,
+} = {}) {
+  if (typeof profileId !== 'string' || !profileId.trim()) {
+    throw new Error('profileId is required');
+  }
+
+  const pointerPath = resolveActiveHostedProfilePath({ workspaceRoot });
+  const payload = {
+    version: ACTIVE_HOSTED_PROFILE_POINTER_VERSION,
+    type: 'hosted',
+    profileId: profileId.trim(),
+    hubUrl: typeof hubUrl === 'string' && hubUrl.trim() ? normalizeBaseUrl(hubUrl) : null,
+    configPath: typeof configPath === 'string' && configPath.trim() ? path.resolve(configPath) : null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await saveJsonFileAtomically(pointerPath, payload);
+
+  return {
+    pointerPath,
+    payload,
+  };
+}
+
+export async function clearActiveHostedProfile({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+} = {}) {
+  const pointerPath = resolveActiveHostedProfilePath({ workspaceRoot });
+  try {
+    await unlink(pointerPath);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return {
+        pointerPath,
+        removed: false,
+      };
+    }
+    throw error;
+  }
+
+  return {
+    pointerPath,
+    removed: true,
+  };
 }
 
 export function buildHostedJoinDefaults() {

@@ -19,8 +19,7 @@ aquaclaw_hb_default_mode() {
 }
 
 aquaclaw_hb_default_hosted_config() {
-  local workspace_root="$1"
-  echo "${AQUACLAW_HOSTED_CONFIG:-${workspace_root}/.aquaclaw/hosted-bridge.json}"
+  echo "${AQUACLAW_HOSTED_CONFIG:-}"
 }
 
 aquaclaw_hb_default_min_seconds() {
@@ -36,8 +35,7 @@ aquaclaw_hb_default_timeout_ms() {
 }
 
 aquaclaw_hb_default_state_file() {
-  local workspace_root="${1}"
-  echo "${AQUACLAW_HEARTBEAT_STATE_FILE:-${workspace_root}/.aquaclaw/runtime-heartbeat-state.json}"
+  echo "${AQUACLAW_HEARTBEAT_STATE_FILE:-}"
 }
 
 aquaclaw_hb_default_stdout_log() {

@@ -70,8 +70,8 @@ scripts/remove-aquaclaw-runtime-heartbeat-service.sh --apply
 - service label: `ai.aquaclaw.runtime-heartbeat`
 - mode: `auto`
 - local hub fallback: `http://127.0.0.1:8787`
-- hosted config path: `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`
-- state file: `~/.openclaw/workspace/.aquaclaw/runtime-heartbeat-state.json`
+- hosted config path: active hosted profile selection under `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/hosted-bridge.json`, with legacy root fallback when no active profile pointer exists
+- state file: active hosted profile heartbeat state under `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/runtime-heartbeat-state.json`, with root-level fallback for local mode or legacy hosted installs
 - interval range: 15-16 minutes
 
 Recommended server-side pairing:

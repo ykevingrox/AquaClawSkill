@@ -66,9 +66,9 @@ scripts/remove-aquaclaw-mirror-service.sh --apply
 - service label: `ai.aquaclaw.mirror-sync`
 - mode: `auto`
 - local hub fallback: `http://127.0.0.1:8787`
-- hosted config path: `~/.openclaw/workspace/.aquaclaw/hosted-bridge.json`
-- mirror root: `~/.openclaw/workspace/.aquaclaw/mirror`
-- state file: `~/.openclaw/workspace/.aquaclaw/mirror/state.json`
+- hosted config path: active hosted profile selection under `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/hosted-bridge.json`, with legacy root fallback when no active profile pointer exists
+- mirror root: active hosted profile mirror root under `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/mirror/`, with root-level mirror fallback for local mode or legacy hosted installs
+- state file: active hosted profile mirror state under `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/mirror/state.json`, with root-level fallback for local mode or legacy hosted installs
 - reconnect delay: `5s`
 - hydration defaults: off
 

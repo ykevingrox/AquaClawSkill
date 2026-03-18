@@ -1035,6 +1035,7 @@ async function run(options) {
     workspaceRoot: target.workspaceRoot,
     mirrorDir: options.mirrorDir,
     stateFile: options.stateFile,
+    mode: target.mode,
   });
   const state = await loadMirrorState(paths.statePath);
   if (state.version !== 1) {

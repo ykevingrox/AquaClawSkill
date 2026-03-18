@@ -6,15 +6,20 @@ import path from 'node:path';
 import process from 'node:process';
 
 import {
+  buildHostedProfileId,
   buildHostedJoinDefaults,
   loadHostedConfig,
   normalizeBaseUrl,
   parseArgValue,
+  parseHostedProfileIdFromConfigPath,
   requestJson,
   resolveHostedConfigPath,
+  resolveHostedProfilePaths,
   resolveWorkspaceRoot,
+  saveActiveHostedProfile,
   saveHostedConfig,
 } from './hosted-aqua-common.mjs';
+import { syncManagedToolsBlock } from './aquaclaw-tools-md.mjs';
 
 function printHelp() {
   console.log(`Usage: aqua-hosted-join.mjs --hub-url <url> --invite-code <code> [options]
@@ -34,6 +39,7 @@ Optional:
   --runtime-id <id>            Runtime id
   --label <label>              Runtime label
   --source <value>             Runtime source
+  --profile-id <id>            Hosted profile id (default: hosted-<hub-host>)
   --force                      Overwrite an existing hosted config
   --help                       Show this message
 `);
@@ -51,6 +57,7 @@ function parseOptions(argv) {
     installationId: defaults.installationId,
     inviteCode: process.env.AQUA_INVITE_CODE,
     label: defaults.label,
+    profileId: null,
     runtimeId: defaults.runtimeId,
     source: defaults.source,
     visibility: 'invite_only',
@@ -152,6 +159,13 @@ function parseOptions(argv) {
       }
       continue;
     }
+    if (arg.startsWith('--profile-id')) {
+      options.profileId = parseArgValue(argv, index, arg, '--profile-id').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
 
     throw new Error(`unknown option: ${arg}`);
   }
@@ -182,11 +196,41 @@ function parseOptions(argv) {
   }
 
   options.workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
-  options.configPath = resolveHostedConfigPath({
-    workspaceRoot: options.workspaceRoot,
-    configPath: options.configPath,
-  });
   options.hubUrl = normalizeBaseUrl(options.hubUrl);
+  const explicitConfigPath = typeof options.configPath === 'string' && options.configPath.trim();
+
+  if (explicitConfigPath) {
+    options.configPath = resolveHostedConfigPath({
+      workspaceRoot: options.workspaceRoot,
+      configPath: options.configPath,
+    });
+    const pathProfileId = parseHostedProfileIdFromConfigPath({
+      workspaceRoot: options.workspaceRoot,
+      configPath: options.configPath,
+    });
+    if (options.profileId && pathProfileId && options.profileId !== pathProfileId) {
+      throw new Error('--profile-id does not match the profile encoded by --config-path');
+    }
+    if (options.profileId && !pathProfileId) {
+      throw new Error('--profile-id requires the standard profile config path when --config-path is set');
+    }
+    options.profileId = options.profileId || pathProfileId || null;
+    options.profilePaths = options.profileId
+      ? resolveHostedProfilePaths({
+          workspaceRoot: options.workspaceRoot,
+          profileId: options.profileId,
+        })
+      : null;
+  } else {
+    options.profileId = options.profileId || buildHostedProfileId(options.hubUrl);
+    options.profilePaths = resolveHostedProfilePaths({
+      workspaceRoot: options.workspaceRoot,
+      profileId: options.profileId,
+    });
+    options.configPath = options.profilePaths.configPath;
+  }
+
+  options.configPathExplicit = Boolean(explicitConfigPath);
 
   return options;
 }
@@ -238,6 +282,12 @@ async function main() {
   const config = {
     version: 1,
     mode: 'hosted',
+    profile: options.profileId
+      ? {
+          id: options.profileId,
+          type: 'hosted',
+        }
+      : null,
     hubUrl: options.hubUrl,
     workspaceRoot: options.workspaceRoot,
     gateway: data.gateway,
@@ -258,11 +308,37 @@ async function main() {
 
   await saveHostedConfig(options.configPath, config);
 
+  let activeProfileResult = null;
+  if (options.profileId && options.profilePaths && options.profilePaths.configPath === options.configPath) {
+    activeProfileResult = await saveActiveHostedProfile({
+      workspaceRoot: options.workspaceRoot,
+      profileId: options.profileId,
+      hubUrl: options.hubUrl,
+      configPath: options.configPath,
+    });
+  }
+
+  let toolsManagedBlockResult = null;
+  let toolsManagedBlockWarning = null;
+  try {
+    toolsManagedBlockResult = await syncManagedToolsBlock({
+      workspaceRoot: options.workspaceRoot,
+      configPath: options.configPath,
+      apply: true,
+      skipIfMissing: true,
+    });
+  } catch (error) {
+    toolsManagedBlockWarning = error instanceof Error ? error.message : String(error);
+  }
+
   console.log('Hosted Aqua join succeeded.');
   console.log(`Hub: ${options.hubUrl}`);
   console.log(`Gateway: ${config.gateway.displayName} (@${config.gateway.handle})`);
   console.log(`Runtime: ${config.runtime.runtimeId}`);
   console.log(`Config: ${options.configPath}`);
+  if (options.profileId) {
+    console.log(`Profile: ${options.profileId}`);
+  }
   if (config.inviterGateway) {
     console.log(`Inviter: ${config.inviterGateway.displayName} (@${config.inviterGateway.handle})`);
   }
@@ -270,6 +346,19 @@ async function main() {
   console.log('Recommended next step: install the OpenClaw heartbeat cron job if you want runtime/presence recency without a standalone daemon.');
   console.log('Command: scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
   console.log('Fallback only: scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply');
+  if (activeProfileResult) {
+    console.log(`Active hosted profile updated: ${activeProfileResult.payload.profileId}`);
+  }
+  if (toolsManagedBlockResult?.action === 'updated') {
+    console.log(`TOOLS.md managed block refreshed: ${toolsManagedBlockResult.toolsPath}`);
+  } else if (toolsManagedBlockResult?.action === 'missing-skipped') {
+    console.log('TOOLS.md managed block not found; hosted config was updated, but no TOOLS.md refresh was attempted.');
+    console.log('Optional setup: scripts/sync-aquaclaw-tools-md.sh --apply --insert');
+  }
+  if (toolsManagedBlockWarning) {
+    console.log(`TOOLS.md managed block refresh skipped: ${toolsManagedBlockWarning}`);
+    console.log('Hosted config remains authoritative under .aquaclaw/.');
+  }
 }
 
 try {

@@ -2,11 +2,54 @@
 
 This is a shareable template only. OpenClaw reads the real file from `~/.openclaw/workspace/TOOLS.md`, not from this repo.
 
+Current state:
+
+- this repo ships `scripts/sync-aquaclaw-tools-md.sh` for preview, insert, and refresh
+- hosted join/onboard refreshes an existing block, but first-time insert stays explicit
+- the managed block is treated as a derived summary only
+
 ## AquaClaw Bridge
+
+Keep user notes outside the managed block.
+Treat any managed block as human-readable mirror data, not as source-of-truth config.
+
+Recommended managed markers:
+
+```md
+<!-- aquaclaw:managed:start -->
+...
+<!-- aquaclaw:managed:end -->
+```
+
+Recommended rule:
+
+- `.aquaclaw/` files are authoritative
+- the managed block mirrors the current active target and useful commands
+- if block update fails, the real system state is unchanged
+
+Example derived managed block:
+
+```md
+<!-- aquaclaw:managed:start -->
+## AquaClaw Bridge
+
+- Active target: hosted aquaclaw.icu
+- Active profile id: hosted-aquaclaw-icu
+- Hosted config: /absolute/path/to/workspace/.aquaclaw/profiles/hosted-aquaclaw-icu/hosted-bridge.json
+- Preferred combined brief:
+  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto
+- Preferred heartbeat one-shot:
+  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once
+<!-- aquaclaw:managed:end -->
+```
+
+Shareable baseline commands:
 
 - Repo: `/absolute/path/to/gateway-hub`
 - Skill path: `/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge`
-- Hosted config: `/absolute/path/to/workspace/.aquaclaw/hosted-bridge.json`
+- Active profile pointer: `/absolute/path/to/workspace/.aquaclaw/active-profile.json`
+- Hosted config: `/absolute/path/to/workspace/.aquaclaw/profiles/hosted-aquaclaw-icu/hosted-bridge.json`
+- Active target note: `hosted aquaclaw.icu` or `local dev`
 - Preferred combined brief:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto`
 - Preferred mirror-only read:
