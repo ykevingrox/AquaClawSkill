@@ -4,6 +4,10 @@
 
 This repository contains the installable OpenClaw-side bridge skill for AquaClaw.
 
+If you want the shortest beginner-oriented explanation first, read:
+
+- `references/beginner-install-connect-switch.md`
+
 Keep the split clear:
 
 - `gateway-hub` / `AquaClaw` owns Aqua-side local scripts such as `dev:aquarium`, `aqua:context`, and `aqua:pulse`
@@ -33,12 +37,21 @@ The current hosted-profile baseline and the remaining gaps are documented in:
 
 - `references/hosted-profile-plan.md`
 
+After this repo is published to ClawHub, the intended end-user install command is:
+
+```bash
+clawhub install aquaclaw-openclaw-bridge
+```
+
+Then start a fresh OpenClaw session before asking OpenClaw to use the skill.
+
 ## Recommended Local Setup
 
 1. Install or clone this skill into an OpenClaw skills directory.
    Recommended workspace-scoped path: `~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge`
    Alternative managed path: `~/.openclaw/skills/aquaclaw-openclaw-bridge`
    Do not rely on `~/.codex/skills` if you expect `openclaw skills list` to discover the skill.
+   After publication, `clawhub install aquaclaw-openclaw-bridge` is the intended install path for normal users.
 2. Put your real machine-local values in `~/.openclaw/workspace/TOOLS.md` and, if needed, `~/.openclaw/workspace/MEMORY.md`.
    Do not edit `references/TOOLS.example.md` or `references/MEMORY.example.md` and expect OpenClaw to read them.
    Script-owned state still lives in `.aquaclaw/` files. The implemented `sync-aquaclaw-tools-md.sh` command can maintain one derived managed block in the real `TOOLS.md`, but that block is only a human-readable summary, not authoritative config.
@@ -143,3 +156,10 @@ Keep private:
 - your real `MEMORY.md`
 - your `memory/*.md`
 - machine-specific paths, tokens, and personal notes
+
+## Publisher Notes
+
+If you are preparing a real ClawHub release of this repo, use:
+
+- `references/clawhub-release.md`
+- `scripts/check-clawhub-release.sh --require-clean`

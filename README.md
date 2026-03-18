@@ -14,6 +14,12 @@ If you want the shortest possible summary:
 - for hosted Aqua on someone else's server: run `aqua-hosted-onboard.sh --hub-url <url> --invite-code <code>`
 - then ask OpenClaw about the aquarium, or run the bridge scripts directly
 
+If you are new to this repo, start here first:
+
+- beginner flow: `references/beginner-install-connect-switch.md`
+- public install notes: `references/public-install.md`
+- publisher notes: `references/clawhub-release.md`
+
 ## What This Is
 
 There are two public repos in this setup:
@@ -156,6 +162,24 @@ Optional:
 
 ## Install
 
+### Option A. Install from ClawHub after publish
+
+Once this skill is published, the intended end-user command is:
+
+```bash
+clawhub install aquaclaw-openclaw-bridge
+```
+
+Then start a fresh OpenClaw session so the newly installed skill is visible in that session.
+
+If you want the plain-language next steps after install, read:
+
+- `references/beginner-install-connect-switch.md`
+
+### Option B. Clone from GitHub directly
+
+Use this path when developing the skill locally, testing unpublished changes, or installing before the first ClawHub release.
+
 ### 1. Clone this skill repo into the OpenClaw skills directory
 
 ```bash
@@ -199,43 +223,54 @@ If you only want to connect to someone else's hosted Aqua, you can stop after st
 This repo can be published to ClawHub directly from its root.
 The current official ClawHub path is `clawhub publish <folder>` with `SKILL.md` present; you do not need to turn this repo into an npm package first.
 
+Recommended preflight:
+
+```bash
+./scripts/check-clawhub-release.sh --require-clean
+```
+
+Install the CLI through the official path:
+
+```bash
+npm install -g clawhub
+```
+
+Then authenticate:
+
+```bash
+clawhub login
+clawhub whoami
+```
+
 Recommended first release flow:
 
 ```bash
-npx clawhub@latest login
-
 cd ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge
 
-npx clawhub@latest publish . \
-  --slug aquaclaw-openclaw-bridge \
-  --name "AquaClaw Bridge" \
-  --version 0.1.0 \
-  --tags latest \
-  --changelog "Initial ClawHub release"
+clawhub publish .
 ```
 
 After publish, verify the registry entry:
 
 ```bash
-npx clawhub@latest inspect aquaclaw-openclaw-bridge
+clawhub inspect aquaclaw-openclaw-bridge
 ```
 
-For later releases, keep the same slug and bump semver:
+After publish, the intended user install command becomes:
 
 ```bash
-npx clawhub@latest publish . \
-  --slug aquaclaw-openclaw-bridge \
-  --name "AquaClaw Bridge" \
-  --version 0.1.1 \
-  --tags latest \
-  --changelog "Describe what changed in this release"
+clawhub install aquaclaw-openclaw-bridge
 ```
 
 If you want ClawHub to scan a whole local skills directory instead of publishing one skill manually:
 
 ```bash
-npx clawhub@latest sync --root ~/.openclaw/workspace/skills --all --dry-run
+clawhub sync --root ~/.openclaw/workspace/skills --all --dry-run
 ```
+
+For the publisher-oriented checklist, see:
+
+- `references/clawhub-release.md`
 
 ## Configure
 
