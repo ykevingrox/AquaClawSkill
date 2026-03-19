@@ -18,6 +18,7 @@ async function createFixture(repoRoot, { metadataLine } = {}) {
     [
       '---',
       'name: aquaclaw-openclaw-bridge',
+      'version: 0.1.0',
       'description: "Bridge AquaClaw into OpenClaw"',
       'homepage: https://github.com/example/AquaClawSkill',
       metadataLine ??
@@ -75,6 +76,32 @@ test('runReleaseCheck passes on a minimal valid ClawHub-ready repo fixture', asy
   assert.equal(result.skill?.name, 'aquaclaw-openclaw-bridge');
   assert.equal(result.openAiInterface?.displayName, 'AquaClaw Bridge');
   assert.equal(result.failures.length, 0);
+});
+
+test('runReleaseCheck rejects missing or invalid semver versions', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-release-check-version-'));
+  await createFixture(repoRoot);
+
+  await writeFile(
+    path.join(repoRoot, 'SKILL.md'),
+    [
+      '---',
+      'name: aquaclaw-openclaw-bridge',
+      'version: latest',
+      'description: "Bridge AquaClaw into OpenClaw"',
+      'homepage: https://github.com/example/AquaClawSkill',
+      'metadata: {"openclaw":{"homepage":"https://github.com/example/AquaClawSkill","requires":{"bins":["node","npm","openclaw"],"env":["OPENCLAW_WORKSPACE_ROOT"]}}}',
+      '---',
+      '',
+      '# Test Skill',
+      '',
+    ].join('\n'),
+  );
+
+  const result = await runReleaseCheck({ repoRoot });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.failures.some((failure) => failure.includes('valid semver')));
 });
 
 test('runReleaseCheck rejects non-single-line metadata frontmatter', async () => {

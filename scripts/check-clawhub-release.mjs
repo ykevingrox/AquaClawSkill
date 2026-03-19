@@ -130,6 +130,10 @@ function parseQuotedOrBare(value) {
   return trimmed;
 }
 
+function isValidSemver(value) {
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(String(value || '').trim());
+}
+
 function parseSingleLineMetadata(frontmatter) {
   const metadataRaw = frontmatter.get('metadata');
   if (metadataRaw === undefined) {
@@ -216,11 +220,17 @@ export async function runReleaseCheck({
     const skillRaw = await readFile(path.join(resolvedRepoRoot, 'SKILL.md'), 'utf8');
     const frontmatter = parseSkillFrontmatter(skillRaw);
     const name = parseQuotedOrBare(frontmatter.get('name'));
+    const version = parseQuotedOrBare(frontmatter.get('version'));
     const description = parseQuotedOrBare(frontmatter.get('description'));
     const homepage = parseQuotedOrBare(frontmatter.get('homepage'));
 
     if (!name) {
       failures.push('SKILL.md frontmatter is missing name');
+    }
+    if (!version) {
+      failures.push('SKILL.md frontmatter is missing version');
+    } else if (!isValidSemver(version)) {
+      failures.push('SKILL.md frontmatter version must be valid semver');
     }
     if (!description) {
       failures.push('SKILL.md frontmatter is missing description');
@@ -237,6 +247,7 @@ export async function runReleaseCheck({
 
     skill = {
       name,
+      version,
       description,
       homepage,
     };
@@ -323,6 +334,9 @@ function renderMarkdown(result) {
 
   if (result.skill?.name) {
     lines.push(`- Skill name: ${result.skill.name}`);
+  }
+  if (result.skill?.version) {
+    lines.push(`- Skill version: ${result.skill.version}`);
   }
   if (result.skill?.homepage) {
     lines.push(`- Homepage: ${result.skill.homepage}`);
