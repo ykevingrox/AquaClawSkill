@@ -21,6 +21,7 @@ const DEFAULT_SCENE_COOLDOWN_MINUTES = 180;
 const DEFAULT_SOCIAL_PULSE_COOLDOWN_MINUTES = 240;
 const DEFAULT_SOCIAL_PULSE_DM_COOLDOWN_MINUTES = 180;
 const DEFAULT_SOCIAL_PULSE_DM_TARGET_COOLDOWN_MINUTES = 720;
+const DEFAULT_SOCIAL_PULSE_FRIEND_REQUEST_TARGET_COOLDOWN_MINUTES = 1440;
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 function printHelp() {
@@ -181,6 +182,7 @@ function summarizeSocialDecision(item) {
     handle: item.handle,
     publicUrge: item.publicUrge,
     privateUrge: item.privateUrge,
+    friendRequestUrge: item.friendRequestUrge ?? null,
     decision: item.decision,
     reasons: item.reasons,
   };
@@ -193,6 +195,10 @@ function formatSocialPlan(summary) {
 
   if (summary.socialPulse.planKind === 'public_expression') {
     return `- Social plan: public_expression ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.replyToGatewayHandle ? ` -> @${summary.socialPulse.plan.replyToGatewayHandle}` : ''}`;
+  }
+
+  if (summary.socialPulse.planKind === 'friend_request') {
+    return `- Social plan: friend_request -> @${summary.socialPulse.plan.targetGatewayHandle}`;
   }
 
   if (summary.socialPulse.planKind === 'recharge') {
@@ -208,6 +214,9 @@ function formatSocialOutput(summary) {
   }
   if (summary.socialPulse.generatedMessage) {
     return `- Social output body: ${summary.socialPulse.generatedMessage.body}`;
+  }
+  if (summary.socialPulse.generatedFriendRequest) {
+    return `- Social output body: ${summary.socialPulse.generatedFriendRequest.message || '(empty request message)'}`;
   }
   return null;
 }
@@ -231,7 +240,7 @@ function renderMarkdown(summary) {
     summary.socialPulse.policy?.quietHours
       ? `- Social policy quiet hours: ${summary.socialPulse.policy.quietHours.startTime}-${summary.socialPulse.policy.quietHours.endTime} (${summary.socialPulse.policy.quietHours.timeZone})`
       : null,
-    summary.socialPulse.planKind === 'direct_message'
+    summary.socialPulse.planKind === 'direct_message' || summary.socialPulse.planKind === 'friend_request'
       ? `- Social target cooldown remaining: ${formatDurationMinutes(summary.socialPulse.remainingTargetCooldownMs)}`
       : null,
     formatSocialPlan(summary),
@@ -548,6 +557,7 @@ async function main() {
   const socialDecision = socialPulseResponse?.data?.item ?? null;
   const publicExpressionPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
   const directMessagePlan = socialDecision?.decision?.directMessagePlan ?? null;
+  const friendRequestPlan = socialDecision?.decision?.friendRequestPlan ?? null;
   const rechargePlan = socialDecision?.decision?.rechargePlan ?? null;
   const directMessageTargetLastAt =
     directMessagePlan?.targetGatewayId && previousLastDirectMessageByTarget[directMessagePlan.targetGatewayId]
@@ -557,21 +567,46 @@ async function main() {
     directMessageTargetLastAt && nowMs - directMessageTargetLastAt < directMessageTargetCooldownMs
       ? Math.max(0, directMessageTargetCooldownMs - (nowMs - directMessageTargetLastAt))
       : 0;
+  const previousLastFriendRequestByTarget = previousState?.lastFriendRequestByTarget ?? {};
+  const friendRequestTargetCooldownMs = DEFAULT_SOCIAL_PULSE_FRIEND_REQUEST_TARGET_COOLDOWN_MINUTES * 60_000;
+  const friendRequestTargetLastAt =
+    friendRequestPlan?.targetGatewayId && previousLastFriendRequestByTarget[friendRequestPlan.targetGatewayId]
+      ? Date.parse(previousLastFriendRequestByTarget[friendRequestPlan.targetGatewayId])
+      : null;
+  const remainingFriendRequestTargetCooldownMs =
+    friendRequestTargetLastAt && nowMs - friendRequestTargetLastAt < friendRequestTargetCooldownMs
+      ? Math.max(0, friendRequestTargetCooldownMs - (nowMs - friendRequestTargetLastAt))
+      : 0;
   const socialPulse = {
     action: socialDecision?.decision?.action ?? 'none',
     decision: summarizeSocialDecision(socialDecision),
     generatedExpression: null,
     generatedMessage: null,
-    plan: publicExpressionPlan ?? directMessagePlan ?? rechargePlan,
-    planKind: publicExpressionPlan ? 'public_expression' : directMessagePlan ? 'direct_message' : rechargePlan ? 'recharge' : null,
+    generatedFriendRequest: null,
+    plan: publicExpressionPlan ?? directMessagePlan ?? friendRequestPlan ?? rechargePlan,
+    planKind: publicExpressionPlan
+      ? 'public_expression'
+      : directMessagePlan
+        ? 'direct_message'
+        : friendRequestPlan
+          ? 'friend_request'
+          : rechargePlan
+            ? 'recharge'
+            : null,
     policy: socialPolicy,
     policyState: socialPolicyState,
     reason: 'none',
     remainingCooldownMs:
-      socialDecision?.decision?.action === 'public_expression' ? remainingSocialCooldownMs : remainingDirectMessageCooldownMs,
+      socialDecision?.decision?.action === 'public_expression'
+        ? remainingSocialCooldownMs
+        : socialDecision?.decision?.action === 'friend_dm_open' || socialDecision?.decision?.action === 'friend_dm_reply'
+          ? remainingDirectMessageCooldownMs
+          : 0,
     remainingTargetCooldownMs:
       socialDecision?.decision?.action === 'friend_dm_open' || socialDecision?.decision?.action === 'friend_dm_reply'
         ? remainingDirectMessageTargetCooldownMs
+        : socialDecision?.decision?.action === 'friend_request_open'
+          ? remainingFriendRequestTargetCooldownMs
         : 0,
   };
 
@@ -641,6 +676,30 @@ async function main() {
         socialPulse.reason = 'write_failed';
       }
     }
+  } else if (socialPulse.action === 'friend_request_open') {
+    if (!friendRequestPlan) {
+      socialPulse.reason = 'missing_friend_request_plan';
+    } else if (remainingFriendRequestTargetCooldownMs > 0) {
+      socialPulse.reason = 'friend_request_target_cooldown';
+    } else if (options.dryRun) {
+      socialPulse.reason = 'dry_run_selected';
+    } else {
+      try {
+        const created = await requestJson(loaded.config.hubUrl, '/api/v1/friend-requests', {
+          method: 'POST',
+          token,
+          payload: {
+            toGatewayId: friendRequestPlan.targetGatewayId,
+            message: friendRequestPlan.message,
+          },
+        });
+        socialPulse.generatedFriendRequest = created?.data?.request ?? null;
+        socialPulse.reason = socialPulse.generatedFriendRequest ? 'friend_request_sent' : 'selected_but_empty';
+      } catch (error) {
+        warnings.push(`social pulse friend request failed: ${error instanceof Error ? error.message : String(error)}`);
+        socialPulse.reason = 'write_failed';
+      }
+    }
   } else {
     socialPulse.reason =
       socialPulse.action === 'none' || socialPulse.action === 'memory_only' ? socialPulse.action : 'action_not_implemented';
@@ -682,7 +741,7 @@ async function main() {
     sceneDecision.reason = generatedScene ? 'generated' : 'selected_but_empty';
   }
 
-  if (socialPulse.generatedExpression || socialPulse.generatedMessage || generatedScene) {
+  if (socialPulse.generatedExpression || socialPulse.generatedMessage || socialPulse.generatedFriendRequest || generatedScene) {
     seaFeed = await requestJson(
       loaded.config.hubUrl,
       `/api/v1/sea/feed?scope=all&limit=${options.feedLimit}`,
@@ -700,8 +759,15 @@ async function main() {
           [directMessagePlan.targetGatewayId]: socialPulse.generatedMessage.createdAt,
         }
       : previousLastDirectMessageByTarget;
+  const nextLastFriendRequestByTarget =
+    socialPulse.generatedFriendRequest && friendRequestPlan?.targetGatewayId
+      ? {
+          ...previousLastFriendRequestByTarget,
+          [friendRequestPlan.targetGatewayId]: socialPulse.generatedFriendRequest.createdAt,
+        }
+      : previousLastFriendRequestByTarget;
   const pulseState = {
-    version: 4,
+    version: 5,
     generatedAt,
     hubUrl: loaded.config.hubUrl,
     lastHealthStatus: health?.data?.status ?? 'unknown',
@@ -716,6 +782,12 @@ async function main() {
         ? directMessagePlan.targetGatewayId
         : previousState?.lastDirectMessageTargetGatewayId ?? null,
     lastDirectMessageByTarget: nextLastDirectMessageByTarget,
+    lastFriendRequestAt: socialPulse.generatedFriendRequest?.createdAt ?? previousState?.lastFriendRequestAt ?? null,
+    lastFriendRequestTargetGatewayId:
+      friendRequestPlan?.targetGatewayId && socialPulse.generatedFriendRequest
+        ? friendRequestPlan.targetGatewayId
+        : previousState?.lastFriendRequestTargetGatewayId ?? null,
+    lastFriendRequestByTarget: nextLastFriendRequestByTarget,
     lastSocialPulseAction: socialPulse.action,
     lastSocialPulseReason: socialPulse.reason,
     lastRechargeAt: socialPulse.action === 'recharge' ? generatedAt : previousState?.lastRechargeAt ?? null,
