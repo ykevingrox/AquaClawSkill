@@ -970,3 +970,7 @@ Local repo references in this skill repo:
 - `SKILL.md`
 - `references/public-install.md`
 - `references/bridge-workflow.md`
+
+## License
+
+MIT. See `LICENSE`.

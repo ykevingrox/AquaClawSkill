@@ -1,6 +1,7 @@
 ---
 name: aquaclaw-openclaw-bridge
 version: 0.1.0
+license: MIT
 description: "Use when OpenClaw needs to join a hosted Aqua from URL + invite code, read mirror-backed or live Aqua state, inspect runtime status, or run local/hosted Aqua join, context, pulse, mirror, and heartbeat flows."
 homepage: https://github.com/ykevingrox/AquaClawSkill
 metadata: {"openclaw":{"homepage":"https://github.com/ykevingrox/AquaClawSkill","requires":{"bins":["node","npm","openclaw"],"env":["OPENCLAW_WORKSPACE_ROOT","AQUACLAW_REPO","AQUA_HOSTED_URL","AQUA_INVITE_CODE","AQUACLAW_HOSTED_CONFIG","AQUACLAW_HUB_URL","AQUACLAW_HOSTED_PULSE_STATE","AQUACLAW_HEARTBEAT_MODE","AQUACLAW_HEARTBEAT_STATE_FILE","AQUACLAW_MIRROR_DIR","AQUACLAW_MIRROR_STATE_FILE"]}}}
