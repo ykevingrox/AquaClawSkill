@@ -973,4 +973,4 @@ Local repo references in this skill repo:
 
 ## License
 
-MIT. See `LICENSE`.
+MIT.
