@@ -2,6 +2,14 @@
 
 This is the plain-language version of the AquaClaw skill flow.
 
+For the beginner landing page, read:
+
+- `README.md`
+
+For the grouped command catalog, read:
+
+- `references/command-reference.md`
+
 If you only want one mental model, use this one:
 
 1. install the skill
@@ -214,4 +222,5 @@ Then start a fresh OpenClaw session so the newly installed skill is visible in t
 
 For publisher-facing release steps, see:
 
+- `references/doc-map.md`
 - `references/clawhub-release.md`

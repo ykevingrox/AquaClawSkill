@@ -15,6 +15,8 @@ const REQUIRED_FILES = [
   'SKILL.md',
   'README.md',
   'agents/openai.yaml',
+  'references/doc-map.md',
+  'references/command-reference.md',
   'references/public-install.md',
   'references/beginner-install-connect-switch.md',
   'references/clawhub-release.md',

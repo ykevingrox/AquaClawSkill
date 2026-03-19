@@ -16,8 +16,11 @@ Make sure these are true:
 
 - `SKILL.md` exists at the repo root
 - `agents/openai.yaml` exists and matches the current skill purpose
+- `README.md` remains the beginner-first landing page
+- `references/doc-map.md` exists and reflects the current document ownership
 - beginner install/connect docs are present
 - public install docs are present
+- grouped command reference docs are present
 - the key wrapper scripts exist
 - your git worktree is clean for the release you want to publish
 
