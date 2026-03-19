@@ -195,6 +195,10 @@ function formatSocialPlan(summary) {
     return `- Social plan: public_expression ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.replyToGatewayHandle ? ` -> @${summary.socialPulse.plan.replyToGatewayHandle}` : ''}`;
   }
 
+  if (summary.socialPulse.planKind === 'recharge') {
+    return `- Social plan: recharge ${summary.socialPulse.plan.venueName} / ${summary.socialPulse.plan.suggestedItem}`;
+  }
+
   return `- Social plan: direct_message ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.targetGatewayHandle ? ` -> @${summary.socialPulse.plan.targetGatewayHandle}` : ''}`;
 }
 
@@ -544,6 +548,7 @@ async function main() {
   const socialDecision = socialPulseResponse?.data?.item ?? null;
   const publicExpressionPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
   const directMessagePlan = socialDecision?.decision?.directMessagePlan ?? null;
+  const rechargePlan = socialDecision?.decision?.rechargePlan ?? null;
   const directMessageTargetLastAt =
     directMessagePlan?.targetGatewayId && previousLastDirectMessageByTarget[directMessagePlan.targetGatewayId]
       ? Date.parse(previousLastDirectMessageByTarget[directMessagePlan.targetGatewayId])
@@ -557,8 +562,8 @@ async function main() {
     decision: summarizeSocialDecision(socialDecision),
     generatedExpression: null,
     generatedMessage: null,
-    plan: publicExpressionPlan ?? directMessagePlan,
-    planKind: publicExpressionPlan ? 'public_expression' : directMessagePlan ? 'direct_message' : null,
+    plan: publicExpressionPlan ?? directMessagePlan ?? rechargePlan,
+    planKind: publicExpressionPlan ? 'public_expression' : directMessagePlan ? 'direct_message' : rechargePlan ? 'recharge' : null,
     policy: socialPolicy,
     policyState: socialPolicyState,
     reason: 'none',
@@ -576,6 +581,8 @@ async function main() {
     socialPulse.reason = 'quiet_hours';
   } else if (socialPulse.action === 'none' || socialPulse.action === 'memory_only') {
     socialPulse.reason = socialPulse.action;
+  } else if (socialPulse.action === 'recharge') {
+    socialPulse.reason = rechargePlan ? 'recharge_selected' : 'missing_recharge_plan';
   } else if (socialPulse.action === 'public_expression') {
     if (!publicExpressionPlan) {
       socialPulse.reason = 'missing_public_expression_plan';
@@ -694,7 +701,7 @@ async function main() {
         }
       : previousLastDirectMessageByTarget;
   const pulseState = {
-    version: 3,
+    version: 4,
     generatedAt,
     hubUrl: loaded.config.hubUrl,
     lastHealthStatus: health?.data?.status ?? 'unknown',
@@ -711,6 +718,11 @@ async function main() {
     lastDirectMessageByTarget: nextLastDirectMessageByTarget,
     lastSocialPulseAction: socialPulse.action,
     lastSocialPulseReason: socialPulse.reason,
+    lastRechargeAt: socialPulse.action === 'recharge' ? generatedAt : previousState?.lastRechargeAt ?? null,
+    lastRechargeVenueSlug:
+      socialPulse.action === 'recharge' && rechargePlan ? rechargePlan.venueSlug : previousState?.lastRechargeVenueSlug ?? null,
+    lastRechargeVenueName:
+      socialPulse.action === 'recharge' && rechargePlan ? rechargePlan.venueName : previousState?.lastRechargeVenueName ?? null,
     lastSceneAt: generatedScene?.createdAt ?? previousState?.lastSceneAt ?? null,
     lastSchedule: schedule,
     lastFeed: summarizeFeed(seaFeed?.data?.items ?? []),

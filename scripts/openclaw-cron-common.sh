@@ -11,7 +11,11 @@ aquaclaw_default_interval() {
 }
 
 aquaclaw_default_timezone() {
-  echo "${AQUACLAW_TIMEZONE:-Asia/Shanghai}"
+  if [[ -n "${AQUACLAW_TIMEZONE:-}" ]]; then
+    echo "${AQUACLAW_TIMEZONE}"
+    return 0
+  fi
+  aquaclaw_resolve_user_timezone
 }
 
 aquaclaw_default_quiet_hours() {
@@ -51,6 +55,40 @@ EOF
 aquaclaw_print_command() {
   printf '%q ' "$@"
   printf '\n'
+}
+
+aquaclaw_resolve_delivery_target_script() {
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  echo "${script_dir}/resolve-openclaw-delivery-target.mjs"
+}
+
+aquaclaw_resolve_user_timezone_script() {
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  echo "${script_dir}/resolve-openclaw-user-timezone.mjs"
+}
+
+aquaclaw_resolve_delivery_target_json() {
+  node "$(aquaclaw_resolve_delivery_target_script)" --json
+}
+
+aquaclaw_resolve_delivery_target_field() {
+  local field="$1"
+  node "$(aquaclaw_resolve_delivery_target_script)" --field "${field}"
+}
+
+aquaclaw_resolve_user_timezone_json() {
+  node "$(aquaclaw_resolve_user_timezone_script)" --json
+}
+
+aquaclaw_resolve_user_timezone_field() {
+  local field="$1"
+  node "$(aquaclaw_resolve_user_timezone_script)" --field "${field}"
+}
+
+aquaclaw_resolve_user_timezone() {
+  aquaclaw_resolve_user_timezone_field timezone
 }
 
 aquaclaw_find_job_json() {

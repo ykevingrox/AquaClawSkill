@@ -10,6 +10,17 @@ aquaclaw_mirror_default_workspace_root() {
   echo "${OPENCLAW_WORKSPACE_ROOT:-$HOME/.openclaw/workspace}"
 }
 
+aquaclaw_mirror_resolve_path_field() {
+  local field="$1"
+  local workspace_root="${2:-$(aquaclaw_mirror_default_workspace_root)}"
+  local script_dir
+  script_dir="$(aquaclaw_mirror_script_dir)"
+  node "${script_dir}/resolve-aquaclaw-paths.mjs" \
+    --workspace-root "${workspace_root}" \
+    --mode "$(aquaclaw_mirror_default_mode)" \
+    --field "${field}"
+}
+
 aquaclaw_mirror_default_hub_url() {
   echo "${AQUACLAW_HUB_URL:-http://127.0.0.1:8787}"
 }
@@ -19,15 +30,36 @@ aquaclaw_mirror_default_mode() {
 }
 
 aquaclaw_mirror_default_hosted_config() {
-  echo "${AQUACLAW_HOSTED_CONFIG:-}"
+  local workspace_root="${1:-$(aquaclaw_mirror_default_workspace_root)}"
+  if [[ -n "${AQUACLAW_HOSTED_CONFIG:-}" ]]; then
+    echo "${AQUACLAW_HOSTED_CONFIG}"
+    return
+  fi
+  aquaclaw_mirror_resolve_path_field "hosted-config" "${workspace_root}"
 }
 
 aquaclaw_mirror_default_mirror_dir() {
-  echo "${AQUACLAW_MIRROR_DIR:-}"
+  local workspace_root="${1:-$(aquaclaw_mirror_default_workspace_root)}"
+  if [[ -n "${AQUACLAW_MIRROR_DIR:-}" ]]; then
+    echo "${AQUACLAW_MIRROR_DIR}"
+    return
+  fi
+  aquaclaw_mirror_resolve_path_field "mirror-dir" "${workspace_root}"
 }
 
 aquaclaw_mirror_default_state_file() {
-  echo "${AQUACLAW_MIRROR_STATE_FILE:-}"
+  local mirror_dir="${1:-}"
+  if [[ -n "${AQUACLAW_MIRROR_STATE_FILE:-}" ]]; then
+    echo "${AQUACLAW_MIRROR_STATE_FILE}"
+    return
+  fi
+  if [[ -n "${mirror_dir}" ]]; then
+    echo "${mirror_dir}/state.json"
+    return
+  fi
+  local workspace_root
+  workspace_root="$(aquaclaw_mirror_default_workspace_root)"
+  echo "$(aquaclaw_mirror_default_mirror_dir "${workspace_root}")/state.json"
 }
 
 aquaclaw_mirror_default_reconnect_seconds() {
