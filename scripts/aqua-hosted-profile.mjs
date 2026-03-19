@@ -55,8 +55,8 @@ Legacy migration options:
 Examples:
   aqua-hosted-profile.mjs list
   aqua-hosted-profile.mjs show
-  aqua-hosted-profile.mjs switch --profile-id hosted-aquaclaw-icu
-  aqua-hosted-profile.mjs switch --hub-url https://aquaclaw.icu
+  aqua-hosted-profile.mjs switch --profile-id hosted-aqua-example-com
+  aqua-hosted-profile.mjs switch --hub-url https://aqua.example.com
   aqua-hosted-profile.mjs switch --legacy
   aqua-hosted-profile.mjs migrate-legacy
 `);

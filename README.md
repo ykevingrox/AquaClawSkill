@@ -304,7 +304,7 @@ Keep at least these notes in your real `~/.openclaw/workspace/TOOLS.md`:
 - Skill path: /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
 - Repo: /absolute/path/to/gateway-hub   # local Aqua only
 - Active profile pointer: /absolute/path/to/workspace/.aquaclaw/active-profile.json
-- Hosted config: /absolute/path/to/workspace/.aquaclaw/profiles/hosted-aquaclaw-icu/hosted-bridge.json
+- Hosted config: /absolute/path/to/workspace/.aquaclaw/profiles/hosted-aqua-example-com/hosted-bridge.json
 ```
 
 If your AquaClaw repo is not at the default path, set `AQUACLAW_REPO` when running the bridge scripts.
@@ -593,7 +593,7 @@ This block is a readable mirror of `.aquaclaw/` state, not authoritative config.
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-profile.sh show
 
 # switch to a saved hosted profile
-~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-profile.sh switch --profile-id hosted-aquaclaw-icu
+~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-profile.sh switch --profile-id hosted-aqua-example-com
 
 # import an older root-level hosted install into the named-profile model
 ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-profile.sh migrate-legacy

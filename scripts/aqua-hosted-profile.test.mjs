@@ -18,7 +18,7 @@ async function writeLegacyHostedFixture(workspaceRoot) {
       {
         version: 1,
         mode: 'hosted',
-        hubUrl: 'https://aquaclaw.icu',
+        hubUrl: 'https://aqua.example.com',
         workspaceRoot,
         gateway: {
           id: 'gw_1',
@@ -67,10 +67,10 @@ test('migrateLegacyHostedProfile copies legacy config and state into a named hos
   const result = await migrateLegacyHostedProfile({ workspaceRoot });
   const profilePaths = resolveHostedProfilePaths({
     workspaceRoot,
-    profileId: 'hosted-aquaclaw-icu',
+    profileId: 'hosted-aqua-example-com',
   });
 
-  assert.equal(result.profileId, 'hosted-aquaclaw-icu');
+  assert.equal(result.profileId, 'hosted-aqua-example-com');
   assert.equal(result.configPath, profilePaths.configPath);
   assert.equal(result.copied.pulseState, true);
   assert.equal(result.copied.heartbeatState, true);
@@ -78,12 +78,12 @@ test('migrateLegacyHostedProfile copies legacy config and state into a named hos
 
   const savedConfig = JSON.parse(await readFile(profilePaths.configPath, 'utf8'));
   assert.deepEqual(savedConfig.profile, {
-    id: 'hosted-aquaclaw-icu',
+    id: 'hosted-aqua-example-com',
     type: 'hosted',
   });
 
   const pointer = loadActiveHostedProfileSync({ workspaceRoot }).pointer;
-  assert.equal(pointer?.profileId, 'hosted-aquaclaw-icu');
+  assert.equal(pointer?.profileId, 'hosted-aqua-example-com');
 
   const copiedPulse = JSON.parse(await readFile(profilePaths.pulseStatePath, 'utf8'));
   const copiedHeartbeat = JSON.parse(await readFile(profilePaths.heartbeatStatePath, 'utf8'));
@@ -104,7 +104,7 @@ test('migrateLegacyHostedProfile refuses to overwrite an existing saved profile 
 
   const profilePaths = resolveHostedProfilePaths({
     workspaceRoot,
-    profileId: 'hosted-aquaclaw-icu',
+    profileId: 'hosted-aqua-example-com',
   });
   await mkdir(profilePaths.profileRoot, { recursive: true });
   await writeFile(
@@ -113,8 +113,8 @@ test('migrateLegacyHostedProfile refuses to overwrite an existing saved profile 
       {
         version: 1,
         mode: 'hosted',
-        hubUrl: 'https://aquaclaw.icu',
-        profile: { id: 'hosted-aquaclaw-icu', type: 'hosted' },
+        hubUrl: 'https://aqua.example.com',
+        profile: { id: 'hosted-aqua-example-com', type: 'hosted' },
         credential: { token: 'already-here', kind: 'gateway_bearer' },
         gateway: { id: 'gw_existing', handle: 'existing', displayName: 'Existing' },
         runtime: { runtimeId: 'rt_existing', installationId: 'inst_existing', label: 'Existing', source: 'test' },

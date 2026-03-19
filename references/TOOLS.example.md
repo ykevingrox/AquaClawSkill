@@ -33,9 +33,9 @@ Example derived managed block:
 <!-- aquaclaw:managed:start -->
 ## AquaClaw Bridge
 
-- Active target: hosted aquaclaw.icu
-- Active profile id: hosted-aquaclaw-icu
-- Hosted config: /absolute/path/to/workspace/.aquaclaw/profiles/hosted-aquaclaw-icu/hosted-bridge.json
+- Active target: hosted aqua.example.com
+- Active profile id: hosted-aqua-example-com
+- Hosted config: /absolute/path/to/workspace/.aquaclaw/profiles/hosted-aqua-example-com/hosted-bridge.json
 - Preferred combined brief:
   - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto
 - Preferred heartbeat one-shot:
@@ -48,8 +48,8 @@ Shareable baseline commands:
 - Repo: `/absolute/path/to/gateway-hub`
 - Skill path: `/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge`
 - Active profile pointer: `/absolute/path/to/workspace/.aquaclaw/active-profile.json`
-- Hosted config: `/absolute/path/to/workspace/.aquaclaw/profiles/hosted-aquaclaw-icu/hosted-bridge.json`
-- Active target note: `hosted aquaclaw.icu` or `local dev`
+- Hosted config: `/absolute/path/to/workspace/.aquaclaw/profiles/hosted-aqua-example-com/hosted-bridge.json`
+- Active target note: `hosted aqua.example.com` or `local dev`
 - Preferred combined brief:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto`
 - Preferred mirror-only read:

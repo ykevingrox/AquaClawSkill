@@ -20,7 +20,7 @@ import {
 } from './hosted-aqua-common.mjs';
 
 test('buildHostedProfileId derives a stable hosted profile slug from hub URL', () => {
-  assert.equal(buildHostedProfileId('https://aquaclaw.icu'), 'hosted-aquaclaw-icu');
+  assert.equal(buildHostedProfileId('https://aqua.example.com'), 'hosted-aqua-example-com');
   assert.equal(buildHostedProfileId('https://Aqua.Example.com:8443'), 'hosted-aqua-example-com-8443');
 });
 
@@ -28,7 +28,7 @@ test('active hosted profile pointer drives default hosted config and state paths
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-active-profile-'));
   const profilePaths = resolveHostedProfilePaths({
     workspaceRoot,
-    profileId: 'hosted-aquaclaw-icu',
+    profileId: 'hosted-aqua-example-com',
   });
 
   await mkdir(profilePaths.profileRoot, { recursive: true });
@@ -38,7 +38,7 @@ test('active hosted profile pointer drives default hosted config and state paths
       {
         version: 1,
         mode: 'hosted',
-        hubUrl: 'https://aquaclaw.icu',
+        hubUrl: 'https://aqua.example.com',
         credential: { token: 'secret', kind: 'gateway_bearer' },
         gateway: { id: 'gw_1', displayName: 'Silver Claw', handle: 'silver-claw' },
         runtime: { runtimeId: 'rt_1', installationId: 'inst_1', label: 'Silver', source: 'test' },
@@ -50,8 +50,8 @@ test('active hosted profile pointer drives default hosted config and state paths
 
   await saveActiveHostedProfile({
     workspaceRoot,
-    profileId: 'hosted-aquaclaw-icu',
-    hubUrl: 'https://aquaclaw.icu',
+    profileId: 'hosted-aqua-example-com',
+    hubUrl: 'https://aqua.example.com',
     configPath: profilePaths.configPath,
   });
 
@@ -61,7 +61,7 @@ test('active hosted profile pointer drives default hosted config and state paths
   assert.equal(resolveMirrorRootPath({ workspaceRoot, mode: 'auto' }), profilePaths.mirrorRoot);
 
   const loadedPointer = loadActiveHostedProfileSync({ workspaceRoot });
-  assert.equal(loadedPointer.pointer?.profileId, 'hosted-aquaclaw-icu');
+  assert.equal(loadedPointer.pointer?.profileId, 'hosted-aqua-example-com');
 });
 
 test('explicit config paths bypass active profile pointer when requested', async () => {
@@ -70,11 +70,11 @@ test('explicit config paths bypass active profile pointer when requested', async
 
   await saveActiveHostedProfile({
     workspaceRoot,
-    profileId: 'hosted-aquaclaw-icu',
-    hubUrl: 'https://aquaclaw.icu',
+    profileId: 'hosted-aqua-example-com',
+    hubUrl: 'https://aqua.example.com',
     configPath: resolveHostedProfilePaths({
       workspaceRoot,
-      profileId: 'hosted-aquaclaw-icu',
+      profileId: 'hosted-aqua-example-com',
     }).configPath,
   });
 
@@ -98,13 +98,13 @@ test('clearing the active hosted profile falls back to legacy root paths', async
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-clear-profile-'));
   const profilePaths = resolveHostedProfilePaths({
     workspaceRoot,
-    profileId: 'hosted-aquaclaw-icu',
+    profileId: 'hosted-aqua-example-com',
   });
 
   await saveActiveHostedProfile({
     workspaceRoot,
-    profileId: 'hosted-aquaclaw-icu',
-    hubUrl: 'https://aquaclaw.icu',
+    profileId: 'hosted-aqua-example-com',
+    hubUrl: 'https://aqua.example.com',
     configPath: profilePaths.configPath,
   });
   await clearActiveHostedProfile({ workspaceRoot });

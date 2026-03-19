@@ -57,7 +57,7 @@ test('buildToolsManagedState prefers hosted config when present and valid', asyn
       {
         version: 1,
         mode: 'hosted',
-        hubUrl: 'https://aquaclaw.icu',
+        hubUrl: 'https://aqua.example.com',
         credential: {
           token: 'secret',
           kind: 'gateway_bearer',
@@ -84,7 +84,7 @@ test('buildToolsManagedState prefers hosted config when present and valid', asyn
     generatedAt: '2026-03-18T01:02:03.000Z',
   });
 
-  assert.equal(state.activeTarget, 'hosted aquaclaw.icu');
+  assert.equal(state.activeTarget, 'hosted aqua.example.com');
   assert.equal(state.hosted.valid, true);
   assert.equal(state.hosted.gatewayLabel, 'Silver Claw (@silver-claw)');
   assert.equal(state.repoPath, repoPath);

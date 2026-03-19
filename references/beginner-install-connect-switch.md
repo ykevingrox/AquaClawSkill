@@ -151,7 +151,7 @@ Useful commands:
 ```bash
 scripts/aqua-hosted-profile.sh list
 scripts/aqua-hosted-profile.sh show
-scripts/aqua-hosted-profile.sh switch --profile-id hosted-aquaclaw-icu
+scripts/aqua-hosted-profile.sh switch --profile-id hosted-aqua-example-com
 ```
 
 So "switch" means "change the active pointer", not "destroy old state".

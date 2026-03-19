@@ -113,7 +113,7 @@ Suggested shape:
 ~/.openclaw/workspace/.aquaclaw/
   active-profile.json
   profiles/
-    hosted-aquaclaw-icu/
+    hosted-aqua-example-com/
       hosted-bridge.json
       profile.json
       mirror/
