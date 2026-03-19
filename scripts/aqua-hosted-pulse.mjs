@@ -218,6 +218,9 @@ function formatSocialOutput(summary) {
   if (summary.socialPulse.generatedFriendRequest) {
     return `- Social output body: ${summary.socialPulse.generatedFriendRequest.message || '(empty request message)'}`;
   }
+  if (summary.socialPulse.generatedRechargeEvent) {
+    return `- Social output: recharge shadow -> ${summary.socialPulse.generatedRechargeEvent.metadata?.venueName || 'recharge stop'}`;
+  }
   return null;
 }
 
@@ -535,6 +538,11 @@ async function main() {
     previousLastDirectMessageAt && nowMs - previousLastDirectMessageAt < directMessageCooldownMs
       ? Math.max(0, directMessageCooldownMs - (nowMs - previousLastDirectMessageAt))
       : 0;
+  const previousLastRechargeEventAt = previousState?.lastRechargeEventAt
+    ? Date.parse(previousState.lastRechargeEventAt)
+    : previousState?.version && previousState.version < 6 && previousState?.lastRechargeAt
+      ? Date.parse(previousState.lastRechargeAt)
+      : null;
   const directMessageTargetCooldownMs = effectiveDirectMessageTargetCooldownMinutes * 60_000;
   const policyQuietHours = socialPolicy?.quietHours
     ? {
@@ -577,12 +585,18 @@ async function main() {
     friendRequestTargetLastAt && nowMs - friendRequestTargetLastAt < friendRequestTargetCooldownMs
       ? Math.max(0, friendRequestTargetCooldownMs - (nowMs - friendRequestTargetLastAt))
       : 0;
+  const rechargeCooldownMs = rechargePlan ? Math.max(15, rechargePlan.recoveryMinutes) * 60_000 : 0;
+  const remainingRechargeCooldownMs =
+    previousLastRechargeEventAt && rechargeCooldownMs > 0 && nowMs - previousLastRechargeEventAt < rechargeCooldownMs
+      ? Math.max(0, rechargeCooldownMs - (nowMs - previousLastRechargeEventAt))
+      : 0;
   const socialPulse = {
     action: socialDecision?.decision?.action ?? 'none',
     decision: summarizeSocialDecision(socialDecision),
     generatedExpression: null,
     generatedMessage: null,
     generatedFriendRequest: null,
+    generatedRechargeEvent: null,
     plan: publicExpressionPlan ?? directMessagePlan ?? friendRequestPlan ?? rechargePlan,
     planKind: publicExpressionPlan
       ? 'public_expression'
@@ -599,6 +613,8 @@ async function main() {
     remainingCooldownMs:
       socialDecision?.decision?.action === 'public_expression'
         ? remainingSocialCooldownMs
+        : socialDecision?.decision?.action === 'recharge'
+          ? remainingRechargeCooldownMs
         : socialDecision?.decision?.action === 'friend_dm_open' || socialDecision?.decision?.action === 'friend_dm_reply'
           ? remainingDirectMessageCooldownMs
           : 0,
@@ -617,7 +633,32 @@ async function main() {
   } else if (socialPulse.action === 'none' || socialPulse.action === 'memory_only') {
     socialPulse.reason = socialPulse.action;
   } else if (socialPulse.action === 'recharge') {
-    socialPulse.reason = rechargePlan ? 'recharge_selected' : 'missing_recharge_plan';
+    if (!rechargePlan) {
+      socialPulse.reason = 'missing_recharge_plan';
+    } else if (remainingRechargeCooldownMs > 0) {
+      socialPulse.reason = 'recharge_cooldown';
+    } else if (options.dryRun) {
+      socialPulse.reason = 'dry_run_selected';
+    } else {
+      try {
+        const created = await requestJson(loaded.config.hubUrl, '/api/v1/recharge-events', {
+          method: 'POST',
+          token,
+          payload: {
+            venueSlug: rechargePlan.venueSlug,
+            venueName: rechargePlan.venueName,
+            cue: rechargePlan.cue,
+            suggestedItem: rechargePlan.suggestedItem,
+            suggestedKind: rechargePlan.suggestedKind,
+          },
+        });
+        socialPulse.generatedRechargeEvent = created?.data?.event ?? null;
+        socialPulse.reason = socialPulse.generatedRechargeEvent ? 'recharge_recorded' : 'selected_but_empty';
+      } catch (error) {
+        warnings.push(`social pulse recharge activity failed: ${error instanceof Error ? error.message : String(error)}`);
+        socialPulse.reason = 'write_failed';
+      }
+    }
   } else if (socialPulse.action === 'public_expression') {
     if (!publicExpressionPlan) {
       socialPulse.reason = 'missing_public_expression_plan';
@@ -741,7 +782,13 @@ async function main() {
     sceneDecision.reason = generatedScene ? 'generated' : 'selected_but_empty';
   }
 
-  if (socialPulse.generatedExpression || socialPulse.generatedMessage || socialPulse.generatedFriendRequest || generatedScene) {
+  if (
+    socialPulse.generatedExpression ||
+    socialPulse.generatedMessage ||
+    socialPulse.generatedFriendRequest ||
+    socialPulse.generatedRechargeEvent ||
+    generatedScene
+  ) {
     seaFeed = await requestJson(
       loaded.config.hubUrl,
       `/api/v1/sea/feed?scope=all&limit=${options.feedLimit}`,
@@ -767,7 +814,7 @@ async function main() {
         }
       : previousLastFriendRequestByTarget;
   const pulseState = {
-    version: 5,
+    version: 6,
     generatedAt,
     hubUrl: loaded.config.hubUrl,
     lastHealthStatus: health?.data?.status ?? 'unknown',
@@ -795,6 +842,7 @@ async function main() {
       socialPulse.action === 'recharge' && rechargePlan ? rechargePlan.venueSlug : previousState?.lastRechargeVenueSlug ?? null,
     lastRechargeVenueName:
       socialPulse.action === 'recharge' && rechargePlan ? rechargePlan.venueName : previousState?.lastRechargeVenueName ?? null,
+    lastRechargeEventAt: socialPulse.generatedRechargeEvent?.createdAt ?? previousState?.lastRechargeEventAt ?? null,
     lastSceneAt: generatedScene?.createdAt ?? previousState?.lastSceneAt ?? null,
     lastSchedule: schedule,
     lastFeed: summarizeFeed(seaFeed?.data?.items ?? []),
