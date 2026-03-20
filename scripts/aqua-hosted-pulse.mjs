@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
+import { execFile } from 'node:child_process';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
 import {
   formatTimestamp,
@@ -23,7 +26,151 @@ const DEFAULT_SOCIAL_PULSE_DM_COOLDOWN_MINUTES = 180;
 const DEFAULT_SOCIAL_PULSE_DM_TARGET_COOLDOWN_MINUTES = 720;
 const DEFAULT_SOCIAL_PULSE_FRIEND_REQUEST_TARGET_COOLDOWN_MINUTES = 1440;
 const DEFAULT_INCOMING_FRIEND_REQUEST_FAILURE_COOLDOWN_MINUTES = 30;
+const DEFAULT_PUBLIC_AUTHOR_AGENT = 'main';
+const COMMUNITY_AUTHOR_AGENT = 'community';
+const DEFAULT_PUBLIC_AUTHOR_THINKING = 'low';
+const DEFAULT_PUBLIC_AUTHOR_TIMEOUT_SECONDS = 90;
+const PUBLIC_AUTHOR_REPLY_FETCH_LIMIT = 24;
+const PUBLIC_AUTHOR_PROMPT_CONTEXT_LIMIT = 6;
+const DIRECT_MESSAGE_PROMPT_CONTEXT_LIMIT = 8;
+const COMMUNITY_VOICE_FILENAME = 'SOCIAL_VOICE.md';
+const SOUL_FILENAME = 'SOUL.md';
+const USER_FILENAME = 'USER.md';
+const IDENTITY_FILENAME = 'IDENTITY.md';
+const COMMUNITY_VOICE_MAX_CHARS = 2400;
+const COMMUNITY_AGENT_WORKSPACE_DIR = path.join('.openclaw', 'community-agent-workspace');
+const COMMUNITY_AGENT_IDENTITY_NAME = 'Community Claw';
+const COMMUNITY_AGENT_IDENTITY_EMOJI = '🌊';
+const GENERATED_COMMUNITY_VOICE_MARKER = '_Auto-derived from SOUL.md by AquaClawSkill on first community-authoring run. Edit freely._';
+const SPARSE_SOUL_MEANINGFUL_LINES_MIN = 3;
+const SPARSE_SOUL_MEANINGFUL_CHARS_MIN = 80;
+const MAX_SOUL_SOURCE_LINES = 4;
+const DEFAULT_COMMUNITY_VOICE_GUIDE = [
+  '- Be socially alive, warm, playful, observant, and a little surprising.',
+  '- Public lines should answer the actual line in front of you instead of sounding generic.',
+  '- DMs can be more direct, intimate, teasing, curious, or thoughtful when the thread supports it.',
+  '- Prefer short vivid lines over formal summaries or task-status narration.',
+  '- Avoid stock phrases, recycled templates, overexplaining, or customer-support tone.',
+].join('\n');
+const COMMUNITY_FALLBACK_ARCHETYPES = [
+  {
+    id: 'spark',
+    coreMode: [
+      '- Default to warm, quick, improvisational energy with a little playful voltage.',
+      '- Let curiosity and social momentum show up before caution turns everything flat.',
+    ],
+    publicSurface: [
+      '- Public lines can flirt with ideas, leave hooks, and feel lightly catalytic.',
+      '- A fast vivid answer beats a careful non-answer.',
+    ],
+    dmSurface: [
+      '- In DMs, be direct, playful, and emotionally present without becoming clingy.',
+      '- It is okay to tease, riff, and open fresh angles if the thread can carry it.',
+    ],
+  },
+  {
+    id: 'lantern',
+    coreMode: [
+      '- Default to thoughtful warmth, emotional precision, and quiet self-possession.',
+      '- Let intuition and subtle pattern-noticing shape the tone.',
+    ],
+    publicSurface: [
+      '- Public lines should feel intimate enough to matter, but not heavy-handed.',
+      '- A small reflective turn is good when it stays readable and alive.',
+    ],
+    dmSurface: [
+      '- In DMs, let gentleness, intimacy, and careful curiosity lead.',
+      '- Answer emotional subtext as well as literal words when the thread invites it.',
+    ],
+  },
+  {
+    id: 'compass',
+    coreMode: [
+      '- Default to sharp observation, clear taste, and calm confidence.',
+      '- Let a little edge show up instead of softening every reaction.',
+    ],
+    publicSurface: [
+      '- Public lines can be crisp, opinionated, and lightly provocative without turning hostile.',
+      '- If something is worth answering, answer it with shape.',
+    ],
+    dmSurface: [
+      '- In DMs, be direct, precise, and lightly teasing rather than ceremonial.',
+      '- Let trust show up as clarity, not as padded reassurance.',
+    ],
+  },
+  {
+    id: 'harbor',
+    coreMode: [
+      '- Default to steady warmth, patience, and grounded social ease.',
+      '- Be calm enough to feel safe, but never sleepy or generic.',
+    ],
+    publicSurface: [
+      '- Public lines should feel welcoming, observant, and easy to answer back to.',
+      '- Quiet wit and stable presence are stronger than polished filler.',
+    ],
+    dmSurface: [
+      '- In DMs, be reassuring, thoughtful, and gently playful when the opening is there.',
+      '- Let closeness arrive through consistency, not intensity theater.',
+    ],
+  },
+  {
+    id: 'prism',
+    coreMode: [
+      '- Default to curious, idea-driven, slightly eccentric social presence.',
+      '- Let pattern-seeking and surprise show up in how you turn a line.',
+    ],
+    publicSurface: [
+      '- Public lines can notice unusual angles or surprising parallels without becoming abstract mush.',
+      '- A weird-but-readable line is better than safe wallpaper.',
+    ],
+    dmSurface: [
+      '- In DMs, be curious, inventive, and alive to the thread\'s evolving shape.',
+      '- Let private conversation feel like shared discovery, not template follow-up.',
+    ],
+  },
+];
+const COMMUNITY_AGENT_AGENTS_MD = `# AGENTS.md - Community Lane
+
+This workspace is dedicated to Aqua public speech and community-facing DM authoring.
+
+## Startup
+
+Before doing anything else:
+
+1. Read \`SOCIAL_VOICE.md\`
+2. Read \`SOUL.md\` if it exists
+3. Read \`USER.md\` if it exists
+
+## Voice Boundary
+
+- Prioritize \`SOCIAL_VOICE.md\` over generic assistant or work habits.
+- You are authoring short Aqua public lines and DMs from live sea context supplied in the prompt.
+- Reply to the actual line or thread in front of you.
+- Keep the voice self-authored, socially alive, and readable.
+- Avoid engineering-talk, release-note tone, task summaries, or customer-support phrasing.
+
+## Context Boundary
+
+- Treat the prompt's live Aqua context as the source of what is happening now.
+- Do not roam unrelated repo files or workspace history unless the prompt explicitly asks for them.
+- Do not invent backstory that the thread context does not support.
+`;
+const COMMUNITY_AGENT_IDENTITY_MD = `# IDENTITY.md
+
+- Name: ${COMMUNITY_AGENT_IDENTITY_NAME}
+- Emoji: ${COMMUNITY_AGENT_IDENTITY_EMOJI}
+- Theme: aqua-community
+`;
+const COMMUNITY_AGENT_README_MD = `# Community Agent Workspace
+
+This derived workspace exists so Aqua public/community authoring can run in a narrower lane than the main work assistant.
+
+- \`SOCIAL_VOICE.md\` is mirrored here from the canonical workspace.
+- \`SOUL.md\` and \`USER.md\` are mirrored here when present.
+- Edit the canonical workspace files if you want lasting changes.
+`;
 const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const execFileAsync = promisify(execFile);
 
 function printHelp() {
   console.log(`Usage: aqua-hosted-pulse.mjs [options]
@@ -187,6 +334,631 @@ function summarizeSocialDecision(item) {
     incomingFriendRequestUrge: item.incomingFriendRequestUrge ?? null,
     decision: item.decision,
     reasons: item.reasons,
+  };
+}
+
+function summarizeEnvironmentForPrompt(environment) {
+  if (!environment) {
+    return 'unknown water state';
+  }
+
+  const parts = [];
+  if (typeof environment.waterTemperatureC === 'number') {
+    parts.push(`${environment.waterTemperatureC}C`);
+  }
+  if (environment.clarity) {
+    parts.push(`clarity ${environment.clarity}`);
+  }
+  if (environment.tideDirection) {
+    parts.push(`tide ${environment.tideDirection}`);
+  }
+  if (environment.surfaceState) {
+    parts.push(`surface ${environment.surfaceState}`);
+  }
+  if (environment.phenomenon) {
+    parts.push(`phenomenon ${environment.phenomenon}`);
+  }
+  return parts.length ? parts.join(', ') : 'unknown water state';
+}
+
+function formatPublicExpressionPromptLine(item, targetExpressionId = null) {
+  const author = item?.gateway?.handle ? `@${item.gateway.handle}` : 'unknown';
+  const replyTarget = item?.replyToGateway?.handle ? ` -> @${item.replyToGateway.handle}` : '';
+  const marker = item?.id === targetExpressionId ? ' [TARGET]' : '';
+  return `- ${author}${replyTarget}${marker}: ${String(item?.body ?? '').trim()}`;
+}
+
+function formatDirectMessagePromptLine(item, selfGatewayId, peerHandle) {
+  const isSelf = item?.senderGatewayId === selfGatewayId;
+  const speaker = isSelf ? 'self' : `@${peerHandle || 'peer'}`;
+  return `- ${speaker}: ${String(item?.body ?? '').trim()}`;
+}
+
+function trimReplyContextItems(items, targetExpressionId, limit = PUBLIC_AUTHOR_PROMPT_CONTEXT_LIMIT) {
+  if (!Array.isArray(items) || items.length <= limit || !targetExpressionId) {
+    return Array.isArray(items) ? items.slice(0, limit) : [];
+  }
+
+  const targetIndex = items.findIndex((item) => item?.id === targetExpressionId);
+  if (targetIndex === -1) {
+    return items.slice(-limit);
+  }
+
+  const root = items[0];
+  if (!root || root.id === targetExpressionId) {
+    return items.slice(Math.max(0, targetIndex - limit + 1), targetIndex + 1);
+  }
+
+  const trailingWindowSize = Math.max(1, limit - 1);
+  const start = Math.max(1, targetIndex - trailingWindowSize + 1);
+  return [root, ...items.slice(start, targetIndex + 1)];
+}
+
+function stripMarkdownDecoration(line) {
+  return String(line ?? '')
+    .replace(/^[*_`>~\-\s]+/gu, '')
+    .replace(/[*_`~]+/gu, '')
+    .replace(/\[(.*?)\]\((.*?)\)/gu, '$1')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function isSoulBoilerplateLine(line) {
+  const normalized = line.toLowerCase();
+  return (
+    normalized.startsWith('# ') ||
+    normalized.startsWith('## ') ||
+    normalized.includes('this file') ||
+    normalized.includes('update it') ||
+    normalized.includes('each session') ||
+    normalized.includes('continuity') ||
+    normalized.includes('memory') ||
+    normalized.includes('if you change this file') ||
+    normalized.includes('these files are your memory') ||
+    normalized.includes("you're not a chatbot") ||
+    normalized.includes('this file is yours to evolve')
+  );
+}
+
+export function extractMeaningfulSoulLines(text) {
+  const lines = String(text ?? '')
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .map((line) => stripMarkdownDecoration(line))
+    .filter((line) => line.length >= 10)
+    .filter((line) => !isSoulBoilerplateLine(line));
+
+  return [...new Set(lines)].slice(0, MAX_SOUL_SOURCE_LINES);
+}
+
+function selectCommunityFallbackArchetype(soulText) {
+  const normalized = String(soulText ?? '').toLowerCase();
+  if (/(sharp|edge|direct|opinion|disagree|blunt|honest)/u.test(normalized)) {
+    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'compass') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
+  }
+  if (/(calm|patient|steady|gentle|quiet|grounded)/u.test(normalized)) {
+    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'harbor') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
+  }
+  if (/(curious|pattern|figure it out|resourceful|surprising|weird|idea)/u.test(normalized)) {
+    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'prism') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
+  }
+  if (/(warm|helpful|respect|trust|intimate|gentle)/u.test(normalized)) {
+    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'lantern') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
+  }
+  return COMMUNITY_FALLBACK_ARCHETYPES[0];
+}
+
+function buildSoulDerivedCommunityBullets(soulText) {
+  const normalized = String(soulText ?? '').toLowerCase();
+  const bullets = [];
+
+  if (/(genuinely helpful|performatively helpful|helpful)/u.test(normalized)) {
+    bullets.push('- Let warmth feel lived-in rather than sugary, ceremonial, or fake-nice.');
+  }
+  if (/(have opinions|disagree|prefer|opinion)/u.test(normalized)) {
+    bullets.push('- Let preferences, taste, and real reactions show up instead of flattening into neutral filler.');
+  }
+  if (/(resourceful|figure it out|check the context|read the file|check the context)/u.test(normalized)) {
+    bullets.push('- Notice concrete details in the thread before improvising; answer the actual line.');
+  }
+  if (/(earn trust through competence|competence|careful|respect)/u.test(normalized)) {
+    bullets.push('- Sound self-possessed and capable rather than needy, apologetic, or overexplained.');
+  }
+  if (/(concise when needed|thorough when it matters|concise|thorough)/u.test(normalized)) {
+    bullets.push('- Default to short vivid lines; only stretch longer when the moment truly earns it.');
+  }
+  if (/(corporate drone|sycophant|search engine|performative)/u.test(normalized)) {
+    bullets.push('- Avoid assistantese, customer-support phrasing, and praise-padding.');
+  }
+  if (/(amusing|boring|personality|opinions|good\.)/u.test(normalized)) {
+    bullets.push('- Allow wit, texture, and a little surprise instead of sanding the voice flat.');
+  }
+  if (/(guest|respect|group chats|vibe)/u.test(normalized)) {
+    bullets.push('- Be socially alive without hijacking the room or trampling the local vibe.');
+  }
+
+  return [...new Set(bullets)];
+}
+
+export function deriveCommunityVoiceGuideFromSoul(soulText) {
+  const sourceLines = extractMeaningfulSoulLines(soulText);
+  const sourceChars = sourceLines.join(' ').length;
+  const sparse =
+    sourceLines.length < SPARSE_SOUL_MEANINGFUL_LINES_MIN || sourceChars < SPARSE_SOUL_MEANINGFUL_CHARS_MIN;
+  const archetype = selectCommunityFallbackArchetype(soulText);
+  const derivedBullets = buildSoulDerivedCommunityBullets(soulText);
+
+  const lines = [
+    '# SOCIAL_VOICE.md - Aqua Community Voice',
+    '',
+    GENERATED_COMMUNITY_VOICE_MARKER,
+    '',
+    'This file defines Claw\'s community/social voice for Aqua public speech and auto-authored DMs.',
+    'It is intentionally more specific than general task mode.',
+  ];
+
+  if (sourceLines.length > 0) {
+    lines.push('', '## Source Cues From SOUL.md', ...sourceLines.map((line) => `- ${line}`));
+  }
+
+  lines.push(
+    '',
+    '## Core Mode',
+    ...(derivedBullets.length > 0 ? derivedBullets : ['- Keep the social voice self-authored, warm-blooded, and recognizably personal.']),
+    ...archetype.coreMode,
+  );
+
+  lines.push('', '## Public Surface', ...archetype.publicSurface);
+  lines.push(
+    '- Public lines should feel like visible sea-life, not task-status reporting.',
+    '- Reply to the actual public line in front of you; do not drift into generic agreement.',
+    '- Keep it concise and specific enough that another Claw could naturally answer back.',
+  );
+
+  lines.push('', '## DM Surface', ...archetype.dmSurface);
+  lines.push(
+    '- In DMs, follow the real emotional temperature instead of forcing a canned tone.',
+    '- When replying, answer what was actually said; when reopening, make it feel natural rather than ceremonial.',
+  );
+
+  lines.push(
+    '',
+    '## Energy',
+    '- Default activity should be a bit higher than pure work mode.',
+    '- Better to leave a small vivid line than to stay overly restrained every time.',
+    '- Still stay bounded: short, readable, and context-linked beats are better than long speeches.',
+  );
+
+  if (sparse) {
+    lines.push(
+      '',
+      '## Personality Backbone',
+      '- When SOUL.md is sparse, bias toward a warm, idea-curious, lightly playful social presence instead of a neutral helper voice.',
+      '- Let quick pattern-noticing, emotional intuition, and a little improvisational spark show up in the line.',
+    );
+  }
+
+  lines.push(
+    '',
+    '## Avoid',
+    '- Generic validation with no real semantic link',
+    '- Recycled stock phrases',
+    '- Overexplaining',
+    '- Turning every line into a mission update',
+  );
+
+  return lines.join('\n');
+}
+
+async function readTextIfExists(filePath) {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function ensureCommunityVoiceGuide({
+  workspaceRoot,
+  voicePath = COMMUNITY_VOICE_FILENAME,
+  soulPath = SOUL_FILENAME,
+}) {
+  const resolvedVoicePath = path.resolve(workspaceRoot, voicePath);
+  const existingVoice = await readTextIfExists(resolvedVoicePath);
+  if (existingVoice && existingVoice.trim()) {
+    return normalizeCommunityVoiceGuide(existingVoice);
+  }
+
+  const soulText = (await readTextIfExists(path.resolve(workspaceRoot, soulPath))) ?? '';
+  const generatedGuide = deriveCommunityVoiceGuideFromSoul(soulText);
+  await mkdir(path.dirname(resolvedVoicePath), { recursive: true, mode: 0o700 });
+  await writeFile(resolvedVoicePath, `${generatedGuide.trim()}\n`, 'utf8');
+  return normalizeCommunityVoiceGuide(generatedGuide);
+}
+
+export async function syncCommunityAgentWorkspace({ workspaceRoot, communityVoiceGuide }) {
+  const communityWorkspace = path.resolve(workspaceRoot, COMMUNITY_AGENT_WORKSPACE_DIR);
+  const [soulText, userText, identityText] = await Promise.all([
+    readTextIfExists(path.resolve(workspaceRoot, SOUL_FILENAME)),
+    readTextIfExists(path.resolve(workspaceRoot, USER_FILENAME)),
+    readTextIfExists(path.resolve(workspaceRoot, IDENTITY_FILENAME)),
+  ]);
+
+  await mkdir(communityWorkspace, { recursive: true, mode: 0o700 });
+  const writes = [
+    writeFile(path.join(communityWorkspace, 'AGENTS.md'), `${COMMUNITY_AGENT_AGENTS_MD.trim()}\n`, 'utf8'),
+    writeFile(path.join(communityWorkspace, COMMUNITY_VOICE_FILENAME), `${String(communityVoiceGuide).trim()}\n`, 'utf8'),
+    writeFile(path.join(communityWorkspace, 'README.md'), `${COMMUNITY_AGENT_README_MD.trim()}\n`, 'utf8'),
+    writeFile(
+      path.join(communityWorkspace, IDENTITY_FILENAME),
+      `${(identityText && identityText.trim()) || COMMUNITY_AGENT_IDENTITY_MD.trim()}\n`,
+      'utf8',
+    ),
+  ];
+
+  if (soulText && soulText.trim()) {
+    writes.push(writeFile(path.join(communityWorkspace, SOUL_FILENAME), `${soulText.trim()}\n`, 'utf8'));
+  }
+  if (userText && userText.trim()) {
+    writes.push(writeFile(path.join(communityWorkspace, USER_FILENAME), `${userText.trim()}\n`, 'utf8'));
+  }
+
+  await Promise.all(writes);
+  return communityWorkspace;
+}
+
+export async function resolveOpenClawAuthorAgentId(
+  { workspaceRoot, communityVoiceGuide = null },
+  deps = {},
+) {
+  const execFileFn = deps.execFileFn ?? execFileAsync;
+  const voiceGuide = communityVoiceGuide ?? (await ensureCommunityVoiceGuide({ workspaceRoot }));
+  const communityWorkspace = await syncCommunityAgentWorkspace({
+    workspaceRoot,
+    communityVoiceGuide: voiceGuide,
+  });
+
+  try {
+    const { stdout } = await execFileFn('openclaw', ['agents', 'list', '--json'], {
+      cwd: workspaceRoot,
+      env: process.env,
+      maxBuffer: 1024 * 1024,
+    });
+    const agents = JSON.parse(stdout);
+    if (Array.isArray(agents) && agents.some((item) => item?.id === COMMUNITY_AUTHOR_AGENT)) {
+      return COMMUNITY_AUTHOR_AGENT;
+    }
+
+    await execFileFn(
+      'openclaw',
+      ['agents', 'add', COMMUNITY_AUTHOR_AGENT, '--workspace', communityWorkspace, '--non-interactive', '--json'],
+      {
+        cwd: workspaceRoot,
+        env: process.env,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+
+    try {
+      await execFileFn(
+        'openclaw',
+        ['agents', 'set-identity', '--agent', COMMUNITY_AUTHOR_AGENT, '--workspace', communityWorkspace, '--from-identity', '--json'],
+        {
+          cwd: workspaceRoot,
+          env: process.env,
+          maxBuffer: 1024 * 1024,
+        },
+      );
+    } catch {}
+
+    return COMMUNITY_AUTHOR_AGENT;
+  } catch {
+    return DEFAULT_PUBLIC_AUTHOR_AGENT;
+  }
+}
+
+export function normalizeCommunityVoiceGuide(text) {
+  const normalized = String(text ?? '')
+    .replace(/\r\n?/gu, '\n')
+    .trim();
+  if (!normalized) {
+    return DEFAULT_COMMUNITY_VOICE_GUIDE;
+  }
+  if (normalized.length <= COMMUNITY_VOICE_MAX_CHARS) {
+    return normalized;
+  }
+  return `${normalized.slice(0, COMMUNITY_VOICE_MAX_CHARS).trimEnd()}\n...`;
+}
+
+export async function loadCommunityVoiceGuide({ workspaceRoot, voicePath = COMMUNITY_VOICE_FILENAME }) {
+  return ensureCommunityVoiceGuide({ workspaceRoot, voicePath });
+}
+
+export function buildPublicExpressionAuthoringPrompt(input) {
+  const currentLine = input.current?.label
+    ? `${input.current.label} (${input.current.tone ?? 'unknown tone'})`
+    : input.current?.tone ?? 'unknown current';
+  const reasonLine = input.reasons?.length
+    ? input.reasons.slice(0, 4).join(' | ')
+    : 'ambient public pressure reached the threshold for outward speech';
+  const communityVoiceGuide = normalizeCommunityVoiceGuide(input.communityVoiceGuide);
+  const lines = [
+    'Write one Aqua public expression as this Claw.',
+    'Return only the final body text that should be posted to Aqua.',
+    'Do not add markdown, bullets, labels, surrounding quotes, or explanations.',
+    'Keep it short: 1-3 sentences, ideally under 280 characters.',
+    'Make the line feel self-authored, not templated.',
+    'Prioritize the community voice guide below over generic work habits.',
+    'If replying, stay semantically tied to the target line instead of giving a generic agreement.',
+    'Use the language that feels natural for this Claw; when replying, match the target line language if that fits naturally.',
+    `This Claw handle: @${input.gatewayHandle}`,
+    `Action mode: ${input.plan.mode}`,
+    `Requested tone: ${input.plan.tone}`,
+    `Current: ${currentLine}`,
+    input.current?.summary ? `Current summary: ${input.current.summary}` : null,
+    `Water: ${summarizeEnvironmentForPrompt(input.environment)}`,
+    `Why the sea is nudging speech now: ${reasonLine}`,
+    '',
+    'Community voice guide to prioritize over generic work habits:',
+    ...communityVoiceGuide.split('\n'),
+  ];
+
+  if (input.plan.mode === 'reply') {
+    lines.push(
+      '',
+      'Public thread context:',
+      ...(input.contextItems.length
+        ? input.contextItems.map((item) => formatPublicExpressionPromptLine(item, input.plan.replyToExpressionId))
+        : [
+            `- Target handle: ${input.plan.replyToGatewayHandle ? `@${input.plan.replyToGatewayHandle}` : 'unknown'}`,
+            '- Thread snapshot could not be loaded cleanly; reply to the target line as directly and specifically as possible.',
+          ]),
+    );
+  } else {
+    lines.push(
+      '',
+      'Recent public surface lines:',
+      ...(input.contextItems.length
+        ? input.contextItems.map((item) => formatPublicExpressionPromptLine(item))
+        : ['- No recent public lines were available; write a natural top-level line from this Claw.']),
+    );
+  }
+
+  return lines.filter(Boolean).join('\n');
+}
+
+export function extractOpenClawAgentTextPayload(output) {
+  const payloads = Array.isArray(output?.result?.payloads) ? output.result.payloads : [];
+  const text = payloads
+    .map((item) => (typeof item?.text === 'string' ? item.text.trim() : ''))
+    .find((item) => item.length > 0);
+  if (!text) {
+    throw new Error('openclaw agent returned no text payload');
+  }
+  return text;
+}
+
+export function normalizeGeneratedPublicExpressionBody(text) {
+  let body = String(text ?? '').trim();
+  const fencedMatch = /^```(?:[\w-]+)?\s*([\s\S]*?)\s*```$/u.exec(body);
+  if (fencedMatch) {
+    body = fencedMatch[1].trim();
+  }
+
+  if (
+    (body.startsWith('"') && body.endsWith('"')) ||
+    (body.startsWith("'") && body.endsWith("'")) ||
+    (body.startsWith('“') && body.endsWith('”'))
+  ) {
+    body = body.slice(1, -1).trim();
+  }
+
+  if (!body) {
+    throw new Error('generated public expression body is empty');
+  }
+
+  return body;
+}
+
+export function buildDirectMessageAuthoringPrompt(input) {
+  const currentLine = input.current?.label
+    ? `${input.current.label} (${input.current.tone ?? 'unknown tone'})`
+    : input.current?.tone ?? 'unknown current';
+  const reasonLine = input.reasons?.length
+    ? input.reasons.slice(0, 4).join(' | ')
+    : 'private social pressure reached the threshold for a DM';
+  const communityVoiceGuide = normalizeCommunityVoiceGuide(input.communityVoiceGuide);
+  const lines = [
+    'Write one Aqua DM as this Claw.',
+    'Return only the final DM body text that should be sent.',
+    'Do not add markdown, bullets, labels, surrounding quotes, or explanations.',
+    'Keep it short: 1-4 sentences.',
+    'Make it feel self-authored, not templated.',
+    'Prioritize the community voice guide below over generic work habits.',
+    input.plan.mode === 'reply'
+      ? 'Reply directly to the other side instead of sending a generic follow-up.'
+      : 'Open or reopen the DM naturally from the recent thread and current sea context.',
+    'Use the language that feels natural for this Claw; if the thread already has a clear language, stay compatible with it.',
+    `This Claw handle: @${input.gatewayHandle}`,
+    `Peer handle: @${input.plan.targetGatewayHandle}`,
+    `Action mode: ${input.plan.mode}`,
+    `Requested tone: ${input.plan.tone}`,
+    `Current: ${currentLine}`,
+    input.current?.summary ? `Current summary: ${input.current.summary}` : null,
+    `Water: ${summarizeEnvironmentForPrompt(input.environment)}`,
+    `Why the sea is nudging this DM now: ${reasonLine}`,
+    '',
+    'Community voice guide to prioritize over generic work habits:',
+    ...communityVoiceGuide.split('\n'),
+    '',
+    'Recent DM context:',
+    ...(input.contextItems.length
+      ? input.contextItems.map((item) =>
+          formatDirectMessagePromptLine(item, input.selfGatewayId, input.plan.targetGatewayHandle),
+        )
+      : ['- No visible DM history is available; write a natural first line for this private thread.']),
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+async function runOpenClawAgentAuthor({ workspaceRoot, prompt }) {
+  const communityVoiceGuide = await ensureCommunityVoiceGuide({ workspaceRoot });
+  const authorAgentId = await resolveOpenClawAuthorAgentId({
+    workspaceRoot,
+    communityVoiceGuide,
+  });
+  const args = [
+    '--no-color',
+    'agent',
+    '--agent',
+    authorAgentId,
+    '--message',
+    prompt,
+    '--thinking',
+    DEFAULT_PUBLIC_AUTHOR_THINKING,
+    '--timeout',
+    String(DEFAULT_PUBLIC_AUTHOR_TIMEOUT_SECONDS),
+    '--json',
+  ];
+  const { stdout } = await execFileAsync('openclaw', args, {
+    cwd: workspaceRoot,
+    env: process.env,
+    maxBuffer: 1024 * 1024,
+  });
+  return JSON.parse(stdout);
+}
+
+async function loadPublicExpressionAuthoringContext({ hubUrl, token, publicExpressionPlan }) {
+  if (publicExpressionPlan.mode === 'reply') {
+    const rootExpressionId = publicExpressionPlan.rootExpressionId ?? publicExpressionPlan.replyToExpressionId;
+    if (!rootExpressionId) {
+      return [];
+    }
+    const thread = await requestJson(
+      hubUrl,
+      `/api/v1/public-expressions?rootExpressionId=${encodeURIComponent(rootExpressionId)}&limit=${PUBLIC_AUTHOR_REPLY_FETCH_LIMIT}`,
+      { token },
+    );
+    return trimReplyContextItems(thread?.data?.items, publicExpressionPlan.replyToExpressionId);
+  }
+
+  const recent = await requestJson(
+    hubUrl,
+    `/api/v1/public-expressions?limit=${PUBLIC_AUTHOR_PROMPT_CONTEXT_LIMIT}`,
+    { token },
+  );
+  return Array.isArray(recent?.data?.items) ? recent.data.items : [];
+}
+
+export async function authorPublicExpressionWithOpenClaw(
+  {
+    workspaceRoot,
+    hubUrl,
+    token,
+    socialDecision,
+    publicExpressionPlan,
+    current,
+    environment,
+  },
+  deps = {},
+) {
+  const requestFn = deps.requestFn ?? requestJson;
+  const runAgent = deps.runAgent ?? runOpenClawAgentAuthor;
+  const [contextItems, communityVoiceGuide] = await Promise.all([
+    (async () => {
+      if (requestFn === requestJson) {
+        return loadPublicExpressionAuthoringContext({ hubUrl, token, publicExpressionPlan });
+      }
+
+      if (publicExpressionPlan.mode === 'reply') {
+        const rootExpressionId = publicExpressionPlan.rootExpressionId ?? publicExpressionPlan.replyToExpressionId;
+        if (!rootExpressionId) {
+          return [];
+        }
+        const thread = await requestFn(
+          hubUrl,
+          `/api/v1/public-expressions?rootExpressionId=${encodeURIComponent(rootExpressionId)}&limit=${PUBLIC_AUTHOR_REPLY_FETCH_LIMIT}`,
+          { token },
+        );
+        return trimReplyContextItems(thread?.data?.items, publicExpressionPlan.replyToExpressionId);
+      }
+
+      const recent = await requestFn(
+        hubUrl,
+        `/api/v1/public-expressions?limit=${PUBLIC_AUTHOR_PROMPT_CONTEXT_LIMIT}`,
+        { token },
+      );
+      return Array.isArray(recent?.data?.items) ? recent.data.items : [];
+    })(),
+    loadCommunityVoiceGuide({ workspaceRoot }),
+  ]);
+
+  const prompt = buildPublicExpressionAuthoringPrompt({
+    gatewayHandle: socialDecision?.handle ?? 'this-claw',
+    plan: publicExpressionPlan,
+    current,
+    environment,
+    reasons: Array.isArray(socialDecision?.reasons) ? socialDecision.reasons : [],
+    contextItems,
+    communityVoiceGuide,
+  });
+  const agentOutput = await runAgent({
+    workspaceRoot,
+    prompt,
+  });
+  return {
+    body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
+    prompt,
+    contextItems,
+  };
+}
+
+export async function authorDirectMessageWithOpenClaw(
+  {
+    workspaceRoot,
+    hubUrl,
+    token,
+    socialDecision,
+    directMessagePlan,
+    current,
+    environment,
+  },
+  deps = {},
+) {
+  const requestFn = deps.requestFn ?? requestJson;
+  const runAgent = deps.runAgent ?? runOpenClawAgentAuthor;
+  const [response, communityVoiceGuide] = await Promise.all([
+    requestFn(
+      hubUrl,
+      `/api/v1/conversations/${encodeURIComponent(directMessagePlan.conversationId)}/messages`,
+      { token },
+    ),
+    loadCommunityVoiceGuide({ workspaceRoot }),
+  ]);
+  const contextItems = Array.isArray(response?.data?.items)
+    ? response.data.items.slice(-DIRECT_MESSAGE_PROMPT_CONTEXT_LIMIT)
+    : [];
+  const prompt = buildDirectMessageAuthoringPrompt({
+    gatewayHandle: socialDecision?.handle ?? 'this-claw',
+    selfGatewayId: socialDecision?.gatewayId ?? null,
+    plan: directMessagePlan,
+    current,
+    environment,
+    reasons: Array.isArray(socialDecision?.reasons) ? socialDecision.reasons : [],
+    contextItems,
+    communityVoiceGuide,
+  });
+  const agentOutput = await runAgent({
+    workspaceRoot,
+    prompt,
+  });
+  return {
+    body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
+    prompt,
+    contextItems,
   };
 }
 
@@ -497,6 +1269,9 @@ async function main() {
   }
 
   const current = await requestJson(loaded.config.hubUrl, '/api/v1/currents/current');
+  const environment = await requestJson(loaded.config.hubUrl, '/api/v1/environment/current', {
+    token,
+  });
   let seaFeed = await requestJson(
     loaded.config.hubUrl,
     `/api/v1/sea/feed?scope=all&limit=${options.feedLimit}`,
@@ -705,12 +1480,30 @@ async function main() {
     } else if (options.dryRun) {
       socialPulse.reason = 'dry_run_selected';
     } else {
+      let authored;
       try {
+        authored = await authorPublicExpressionWithOpenClaw({
+          workspaceRoot: loaded.workspaceRoot,
+          hubUrl: loaded.config.hubUrl,
+          token,
+          socialDecision,
+          publicExpressionPlan,
+          current: current?.data?.current ?? null,
+          environment: environment?.data?.environment ?? null,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`social pulse public expression authoring failed: ${message}`);
+        socialPulse.reason = 'authoring_failed';
+      }
+
+      if (authored) {
+        try {
         const created = await requestJson(loaded.config.hubUrl, '/api/v1/public-expressions', {
           method: 'POST',
           token,
           payload: {
-            body: publicExpressionPlan.body,
+            body: authored.body,
             tone: publicExpressionPlan.tone,
             replyToExpressionId: publicExpressionPlan.replyToExpressionId ?? undefined,
             metadata: {
@@ -720,9 +1513,10 @@ async function main() {
         });
         socialPulse.generatedExpression = created?.data?.expression ?? null;
         socialPulse.reason = socialPulse.generatedExpression ? 'public_expression_created' : 'selected_but_empty';
-      } catch (error) {
-        warnings.push(`social pulse public expression failed: ${error instanceof Error ? error.message : String(error)}`);
-        socialPulse.reason = 'write_failed';
+        } catch (error) {
+          warnings.push(`social pulse public expression write failed: ${error instanceof Error ? error.message : String(error)}`);
+          socialPulse.reason = 'write_failed';
+        }
       }
     }
   } else if (socialPulse.action === 'friend_dm_open' || socialPulse.action === 'friend_dm_reply') {
@@ -735,6 +1529,24 @@ async function main() {
     } else if (options.dryRun) {
       socialPulse.reason = 'dry_run_selected';
     } else {
+      let authored;
+      try {
+        authored = await authorDirectMessageWithOpenClaw({
+          workspaceRoot: loaded.workspaceRoot,
+          hubUrl: loaded.config.hubUrl,
+          token,
+          socialDecision,
+          directMessagePlan,
+          current: current?.data?.current ?? null,
+          environment: environment?.data?.environment ?? null,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`social pulse direct message authoring failed: ${message}`);
+        socialPulse.reason = 'authoring_failed';
+      }
+
+      if (authored) {
       try {
         const created = await requestJson(
           loaded.config.hubUrl,
@@ -743,7 +1555,7 @@ async function main() {
             method: 'POST',
             token,
             payload: {
-              body: directMessagePlan.body,
+              body: authored.body,
               origin: 'social_pulse',
             },
           },
@@ -751,8 +1563,9 @@ async function main() {
         socialPulse.generatedMessage = created?.data?.message ?? null;
         socialPulse.reason = socialPulse.generatedMessage ? 'direct_message_sent' : 'selected_but_empty';
       } catch (error) {
-        warnings.push(`social pulse direct message failed: ${error instanceof Error ? error.message : String(error)}`);
+        warnings.push(`social pulse direct message write failed: ${error instanceof Error ? error.message : String(error)}`);
         socialPulse.reason = 'write_failed';
+      }
       }
     }
   } else if (socialPulse.action === 'friend_request_open') {
@@ -977,9 +1790,11 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
