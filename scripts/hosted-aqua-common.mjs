@@ -13,6 +13,7 @@ export const DEFAULT_HOSTED_CONFIG_FILE_NAME = 'hosted-bridge.json';
 export const DEFAULT_HOSTED_PULSE_STATE_FILE_NAME = 'hosted-pulse-state.json';
 export const DEFAULT_HEARTBEAT_STATE_FILE_NAME = 'runtime-heartbeat-state.json';
 export const DEFAULT_MIRROR_DIR_NAME = 'mirror';
+export const DEFAULT_COMMUNITY_MEMORY_DIR_NAME = 'community-memory';
 export const DEFAULT_ACTIVE_PROFILE_FILE_NAME = 'active-profile.json';
 export const ACTIVE_HOSTED_PROFILE_POINTER_VERSION = 1;
 const DEFAULT_HOSTED_CONFIG_RELATIVE_PATH = path.join(
@@ -28,6 +29,10 @@ const DEFAULT_HEARTBEAT_STATE_RELATIVE_PATH = path.join(
   DEFAULT_HEARTBEAT_STATE_FILE_NAME,
 );
 const DEFAULT_MIRROR_RELATIVE_DIR = path.join(DEFAULT_AQUACLAW_STATE_RELATIVE_DIR, DEFAULT_MIRROR_DIR_NAME);
+const DEFAULT_COMMUNITY_MEMORY_RELATIVE_DIR = path.join(
+  DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
+  DEFAULT_COMMUNITY_MEMORY_DIR_NAME,
+);
 const DEFAULT_ACTIVE_PROFILE_RELATIVE_PATH = path.join(
   DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
   DEFAULT_ACTIVE_PROFILE_FILE_NAME,
@@ -162,6 +167,7 @@ export function resolveHostedProfilePaths({
     pulseStatePath: path.join(profileRoot, DEFAULT_HOSTED_PULSE_STATE_FILE_NAME),
     heartbeatStatePath: path.join(profileRoot, DEFAULT_HEARTBEAT_STATE_FILE_NAME),
     mirrorRoot: path.join(profileRoot, DEFAULT_MIRROR_DIR_NAME),
+    communityMemoryRoot: path.join(profileRoot, DEFAULT_COMMUNITY_MEMORY_DIR_NAME),
     activeProfilePath: resolveActiveHostedProfilePath({ workspaceRoot: resolvedWorkspaceRoot }),
   };
 }
@@ -390,6 +396,32 @@ export function resolveMirrorRootPath({
   }
 
   return path.join(resolvedWorkspaceRoot, DEFAULT_MIRROR_RELATIVE_DIR);
+}
+
+export function resolveCommunityMemoryRootPath({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  communityMemoryDir = process.env.AQUACLAW_COMMUNITY_MEMORY_DIR,
+  configPath = process.env.AQUACLAW_HOSTED_CONFIG,
+} = {}) {
+  const explicit = typeof communityMemoryDir === 'string' && communityMemoryDir.trim() ? communityMemoryDir.trim() : null;
+  if (explicit) {
+    return path.resolve(explicit);
+  }
+
+  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
+  const selection = resolveHostedConfigSelection({
+    workspaceRoot: resolvedWorkspaceRoot,
+    configPath,
+  });
+
+  if (selection.profileId) {
+    return resolveHostedProfilePaths({
+      workspaceRoot: resolvedWorkspaceRoot,
+      profileId: selection.profileId,
+    }).communityMemoryRoot;
+  }
+
+  return path.join(resolvedWorkspaceRoot, DEFAULT_COMMUNITY_MEMORY_RELATIVE_DIR);
 }
 
 function assertHostedConfigShape(config, configPath) {

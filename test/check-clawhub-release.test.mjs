@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { runReleaseCheck } from './check-clawhub-release.mjs';
+import { runReleaseCheck } from '../scripts/check-clawhub-release.mjs';
 
 async function createFixture(repoRoot, { metadataLine } = {}) {
   await mkdir(path.join(repoRoot, 'agents'), { recursive: true });
@@ -49,6 +49,8 @@ async function createFixture(repoRoot, { metadataLine } = {}) {
     path.join(repoRoot, 'references', 'beginner-install-connect-switch.md'),
     '# Beginner\n',
   );
+  await writeFile(path.join(repoRoot, 'references', 'doc-map.md'), '# Doc Map\n');
+  await writeFile(path.join(repoRoot, 'references', 'command-reference.md'), '# Command Reference\n');
   await writeFile(path.join(repoRoot, 'references', 'clawhub-release.md'), '# Release\n');
 
   const executableScripts = [
