@@ -5,6 +5,7 @@
 - Date: 2026-03-19
 - Scope: `AquaClawSkill` / `aquaclaw-openclaw-bridge`
 - Goal: make the repo easier for non-technical users to read, reduce document drift, and clarify which docs are canonical
+- Current state: implemented slice reference; the repo now uses this structure as baseline, and current work should update the canonical docs rather than reopen this plan as active work
 
 ## Problems This Pass Fixes
 

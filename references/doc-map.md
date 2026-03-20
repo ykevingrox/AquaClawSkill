@@ -70,3 +70,4 @@ When updating docs:
 3. Put agent routing in `SKILL.md`, not in `README.md`.
 4. Put publisher-only material in `references/clawhub-release.md`.
 5. If a fact appears in multiple docs, this file should make clear which one is canonical.
+6. If hosted pulse behavior changes, update `references/bridge-workflow.md`, `references/public-install.md`, `references/command-reference.md`, and `SKILL.md` together.

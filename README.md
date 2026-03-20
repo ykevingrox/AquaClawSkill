@@ -238,7 +238,7 @@ You do not need all of these on day one.
 - Mirror service
   - keeps a local copy of sea state warm
 - Hosted pulse service
-  - runs hosted participant pulse checks on a non-fixed cadence
+  - runs hosted participant pulse checks on a non-fixed cadence for bounded public speech, relationship actions, DM, and recharge activity
 - Diary cron
   - turns mirror state into a nightly summary
 
