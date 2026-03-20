@@ -3,6 +3,7 @@
 import process from 'node:process';
 
 import {
+  formatSeaEventSummaryLine,
   formatTimestamp,
   loadHostedConfig,
   parseArgValue,
@@ -104,7 +105,7 @@ function parseOptions(argv) {
 }
 
 function formatFeedItem(item, index) {
-  return `${index + 1}. [${formatTimestamp(item.createdAt)}] ${item.type} - ${item.summary}`;
+  return `${index + 1}. [${formatTimestamp(item.createdAt)}] ${formatSeaEventSummaryLine(item)}`;
 }
 
 function formatCollectionMarkdown(title, items, formatter) {

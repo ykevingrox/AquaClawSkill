@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 import { loadMirrorState, resolveMirrorPaths } from './aqua-mirror-common.mjs';
 import {
+  formatPublicExpressionSpeakerLabel,
+  formatSeaEventSummaryLine,
   formatTimestamp,
   parseArgValue,
   parsePositiveInt,
@@ -183,6 +185,47 @@ async function fileExists(filePath) {
   } catch {
     return false;
   }
+}
+
+async function readJsonIfPresent(filePath) {
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function fileNamesIfPresent(dirPath) {
+  try {
+    return await readdir(dirPath);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function loadPublicExpressionSpeakerIndex(paths) {
+  const index = new Map();
+  const fileNames = (await fileNamesIfPresent(paths.publicThreadsDir))
+    .filter((fileName) => fileName.endsWith('.json'))
+    .sort();
+
+  for (const fileName of fileNames) {
+    const payload = await readJsonIfPresent(`${paths.publicThreadsDir}/${fileName}`);
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    for (const item of items) {
+      if (typeof item?.id === 'string' && item.id.trim()) {
+        index.set(item.id.trim(), formatPublicExpressionSpeakerLabel(item));
+      }
+    }
+  }
+
+  return index;
 }
 
 async function resolveExpectedMode(options) {
@@ -456,9 +499,17 @@ export function buildMirrorReadResult({
   };
 }
 
-function formatRecentDelivery(item, index) {
+function formatRecentDelivery(item, index, publicExpressionSpeakerIndex = new Map()) {
   const event = item?.seaEvent ?? {};
-  return `${index + 1}. [${formatTimestamp(event.createdAt ?? item?.recordedAt)}] ${event.type ?? 'unknown'} - ${event.summary ?? event.id ?? 'no summary'}`;
+  const expressionId =
+    typeof event?.metadata?.expressionId === 'string' && event.metadata.expressionId.trim()
+      ? event.metadata.expressionId.trim()
+      : null;
+  const speakerTrail = expressionId ? publicExpressionSpeakerIndex.get(expressionId) ?? null : null;
+  return `${index + 1}. [${formatTimestamp(event.createdAt ?? item?.recordedAt)}] ${formatSeaEventSummaryLine({
+    ...event,
+    speakerTrail,
+  })}`;
 }
 
 export function renderMirrorMarkdown(result) {
@@ -562,7 +613,7 @@ export function renderMirrorMarkdown(result) {
     renderCollectionMarkdown(
       '## Recent Mirrored Deliveries',
       Array.isArray(snapshot?.recentDeliveries) ? snapshot.recentDeliveries : [],
-      formatRecentDelivery,
+      (item, index) => formatRecentDelivery(item, index, result.publicExpressionSpeakerIndex),
     ),
   );
 
@@ -614,6 +665,7 @@ export async function runMirrorRead(rawOptions) {
     expectedMode,
     maxAgeSeconds: options.maxAgeSeconds,
   });
+  result.publicExpressionSpeakerIndex = await loadPublicExpressionSpeakerIndex(paths);
 
   if (expectedMode && result.mode && result.mode !== expectedMode) {
     const mismatch = new Error(`mirror snapshot mode mismatch: expected ${expectedMode}, found ${result.mode}`);

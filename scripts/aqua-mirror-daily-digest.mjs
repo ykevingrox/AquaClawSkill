@@ -1,11 +1,20 @@
 #!/usr/bin/env node
 
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
-import { loadMirrorState, resolveMirrorPaths } from './aqua-mirror-common.mjs';
-import { formatTimestamp, parseArgValue, resolveHostedConfigPath, resolveWorkspaceRoot } from './hosted-aqua-common.mjs';
+import { loadMirrorState, resolveMirrorPaths, writeJsonFile } from './aqua-mirror-common.mjs';
+import {
+  formatGatewayHandleLabel,
+  formatPublicExpressionSpeakerLabel,
+  formatSeaEventSummaryLine,
+  formatTimestamp,
+  parseArgValue,
+  resolveHostedConfigPath,
+  resolveWorkspaceRoot,
+} from './hosted-aqua-common.mjs';
 
 const VALID_FORMATS = new Set(['json', 'markdown']);
 const VALID_EXPECT_MODES = new Set(['any', 'auto', 'local', 'hosted']);
@@ -22,6 +31,8 @@ Options:
   --date <YYYY-MM-DD>       Local diary date in --timezone (default: today)
   --timezone <iana>         Local timezone for diary bucketing (default: current system timezone)
   --max-events <n>          Max notable sea events to print (default: 8)
+  --write-artifact          Also persist JSON + Markdown digest artifacts for this date
+  --artifact-root <path>    Override the default profile-scoped diary artifact directory
   --format <fmt>            json|markdown (default: markdown)
   --help                    Show this message
 `);
@@ -77,12 +88,57 @@ function previewText(value, limit = 120) {
   return `${normalized.slice(0, limit - 1).trimEnd()}...`;
 }
 
+function formatConversationSpeakerLabel(message, peer, viewerGatewayId) {
+  const senderGatewayId =
+    typeof message?.senderGatewayId === 'string' && message.senderGatewayId.trim() ? message.senderGatewayId.trim() : null;
+  if (senderGatewayId && viewerGatewayId && senderGatewayId === viewerGatewayId) {
+    return 'self';
+  }
+  if (senderGatewayId && typeof peer?.id === 'string' && peer.id.trim() && senderGatewayId === peer.id.trim()) {
+    return formatGatewayHandleLabel(peer) ?? 'peer';
+  }
+  if (senderGatewayId) {
+    return 'other gateway';
+  }
+  return 'unknown speaker';
+}
+
+function buildPublicExpressionPreviewLine(item) {
+  const speaker = formatPublicExpressionSpeakerLabel(item) ?? 'unknown speaker';
+  const body = previewText(item?.body ?? '');
+  return `${speaker}: ${body || 'no readable body'}`;
+}
+
+export function resolveDiaryDigestArtifactPaths(paths, targetDate, artifactRoot = null) {
+  const root = artifactRoot ? path.resolve(artifactRoot) : path.join(path.dirname(paths.mirrorRoot), 'diary-digests');
+  return {
+    root,
+    jsonPath: path.join(root, `${targetDate}.json`),
+    markdownPath: path.join(root, `${targetDate}.md`),
+  };
+}
+
+async function writeTextFileAtomically(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tempPath, `${String(value)}\n`, 'utf8');
+  await rename(tempPath, filePath);
+}
+
+export async function writeDigestArtifacts({ summary, markdown, paths, targetDate, artifactRoot = null }) {
+  const artifactPaths = resolveDiaryDigestArtifactPaths(paths, targetDate, artifactRoot);
+  await writeJsonFile(artifactPaths.jsonPath, summary);
+  await writeTextFileAtomically(artifactPaths.markdownPath, markdown);
+  return artifactPaths;
+}
+
 function currentLocalDate(timeZone) {
   return formatLocalDate(new Date().toISOString(), timeZone);
 }
 
-function parseOptions(argv) {
-  const options = {
+function buildDefaultGenerationOptions() {
+  return {
+    artifactRoot: null,
     configPath: process.env.AQUACLAW_HOSTED_CONFIG || null,
     date: null,
     expectMode: 'any',
@@ -91,8 +147,35 @@ function parseOptions(argv) {
     mirrorDir: process.env.AQUACLAW_MIRROR_DIR || null,
     stateFile: process.env.AQUACLAW_MIRROR_STATE_FILE || null,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    writeArtifact: false,
     workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT || null,
   };
+}
+
+function normalizeGenerationOptions(options = {}) {
+  const normalized = {
+    ...buildDefaultGenerationOptions(),
+    ...options,
+  };
+
+  if (!VALID_FORMATS.has(normalized.format)) {
+    throw new Error('format must be json or markdown');
+  }
+  if (!VALID_EXPECT_MODES.has(normalized.expectMode)) {
+    throw new Error('expect-mode must be one of: any, auto, local, hosted');
+  }
+  if (normalized.date && !/^\d{4}-\d{2}-\d{2}$/.test(normalized.date)) {
+    throw new Error('--date must use YYYY-MM-DD');
+  }
+
+  normalized.workspaceRoot = resolveWorkspaceRoot(normalized.workspaceRoot);
+  normalized.timeZone = validateTimeZone(normalized.timeZone);
+  normalized.date = normalized.date ?? currentLocalDate(normalized.timeZone);
+  return normalized;
+}
+
+function parseOptions(argv) {
+  const options = buildDefaultGenerationOptions();
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -100,8 +183,19 @@ function parseOptions(argv) {
       printHelp();
       process.exit(0);
     }
+    if (arg === '--write-artifact') {
+      options.writeArtifact = true;
+      continue;
+    }
     if (arg.startsWith('--workspace-root')) {
       options.workspaceRoot = parseArgValue(argv, index, arg, '--workspace-root').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--artifact-root')) {
+      options.artifactRoot = parseArgValue(argv, index, arg, '--artifact-root').trim();
       if (!arg.includes('=')) {
         index += 1;
       }
@@ -166,21 +260,7 @@ function parseOptions(argv) {
 
     throw new Error(`unknown option: ${arg}`);
   }
-
-  if (!VALID_FORMATS.has(options.format)) {
-    throw new Error('format must be json or markdown');
-  }
-  if (!VALID_EXPECT_MODES.has(options.expectMode)) {
-    throw new Error('expect-mode must be one of: any, auto, local, hosted');
-  }
-  if (options.date && !/^\d{4}-\d{2}-\d{2}$/.test(options.date)) {
-    throw new Error('--date must use YYYY-MM-DD');
-  }
-
-  options.workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
-  options.timeZone = validateTimeZone(options.timeZone);
-  options.date = options.date ?? currentLocalDate(options.timeZone);
-  return options;
+  return normalizeGenerationOptions(options);
 }
 
 async function readJsonIfPresent(filePath) {
@@ -255,7 +335,7 @@ async function loadSeaEventRecords(paths, targetDate, timeZone) {
   return records;
 }
 
-async function loadConversationDiaryItems(paths, targetDate, timeZone) {
+async function loadConversationDiaryItems(paths, targetDate, timeZone, viewerGatewayId = null) {
   const results = [];
   const fileNames = (await fileNamesIfPresent(paths.conversationsDir))
     .filter((fileName) => fileName.endsWith('.json'))
@@ -278,6 +358,7 @@ async function loadConversationDiaryItems(paths, targetDate, timeZone) {
       peerDisplayName: payload.conversation?.peer?.displayName ?? payload.conversation?.peer?.handle ?? 'Unknown',
       messageCount: todaysMessages.length,
       latestMessageAt: latest?.createdAt ?? null,
+      latestSpeaker: formatConversationSpeakerLabel(latest, payload.conversation?.peer, viewerGatewayId),
       latestBody: previewText(latest?.body ?? ''),
     });
   }
@@ -286,8 +367,9 @@ async function loadConversationDiaryItems(paths, targetDate, timeZone) {
   return results;
 }
 
-async function loadPublicThreadDiaryItems(paths, targetDate, timeZone) {
+async function loadPublicThreadDiaryData(paths, targetDate, timeZone) {
   const results = [];
+  const speakerIndex = new Map();
   const fileNames = (await fileNamesIfPresent(paths.publicThreadsDir))
     .filter((fileName) => fileName.endsWith('.json'))
     .sort();
@@ -298,10 +380,20 @@ async function loadPublicThreadDiaryItems(paths, targetDate, timeZone) {
       continue;
     }
     const items = Array.isArray(payload.items) ? payload.items : [];
+    for (const item of items) {
+      if (typeof item?.id === 'string' && item.id.trim()) {
+        speakerIndex.set(item.id.trim(), formatPublicExpressionSpeakerLabel(item));
+      }
+    }
     const todaysItems = items.filter((item) => formatLocalDate(item.createdAt, timeZone) === targetDate);
     if (!todaysItems.length) {
       continue;
     }
+    const rootItem =
+      items.find((item) => item?.id === payload.rootExpressionId) ??
+      items.find((item) => item?.parentExpressionId === null) ??
+      items[0] ??
+      null;
     const latest = todaysItems.at(-1);
     results.push({
       rootExpressionId: payload.rootExpressionId ?? fileName.replace(/\.json$/, ''),
@@ -309,11 +401,18 @@ async function loadPublicThreadDiaryItems(paths, targetDate, timeZone) {
       latestAt: latest?.createdAt ?? null,
       latestBody: previewText(latest?.body ?? ''),
       latestHandle: latest?.gatewayHandle ?? latest?.gateway?.handle ?? null,
+      latestSpeaker: formatPublicExpressionSpeakerLabel(latest),
+      latestPreview: buildPublicExpressionPreviewLine(latest),
+      rootSpeaker: formatPublicExpressionSpeakerLabel(rootItem),
+      rootPreview: buildPublicExpressionPreviewLine(rootItem),
     });
   }
 
   results.sort((left, right) => String(right.latestAt ?? '').localeCompare(String(left.latestAt ?? '')));
-  return results;
+  return {
+    items: results,
+    speakerIndex,
+  };
 }
 
 function summarizeCounts(records) {
@@ -344,10 +443,26 @@ function summarizeCounts(records) {
   return counts;
 }
 
+export function summarizeContinuityCounts({ conversationItems = [], publicThreadItems = [] } = {}) {
+  return {
+    directThreads: conversationItems.length,
+    directLines: conversationItems.reduce(
+      (sum, item) => sum + (Number.isFinite(item?.messageCount) ? item.messageCount : 0),
+      0,
+    ),
+    publicThreads: publicThreadItems.length,
+    publicLines: publicThreadItems.reduce(
+      (sum, item) => sum + (Number.isFinite(item?.expressionCount) ? item.expressionCount : 0),
+      0,
+    ),
+  };
+}
+
 export function buildDiarySummary({
   context,
   conversationItems,
   publicThreadItems,
+  publicExpressionSpeakerIndex,
   records,
   state,
   targetDate,
@@ -355,12 +470,28 @@ export function buildDiarySummary({
   maxEvents,
 }) {
   const counts = summarizeCounts(records);
-  const notableEvents = records.slice(-maxEvents).map((record) => ({
-    createdAt: record?.seaEvent?.createdAt ?? record?.recordedAt ?? null,
-    type: record?.seaEvent?.type ?? 'unknown',
-    summary: record?.seaEvent?.summary ?? '',
-    visibility: record?.seaEvent?.visibility ?? null,
-  }));
+  const continuityCounts = summarizeContinuityCounts({
+    conversationItems,
+    publicThreadItems,
+  });
+  const notableEvents = records.slice(-maxEvents).map((record) => {
+    const seaEvent = record?.seaEvent ?? {};
+    const expressionId =
+      typeof seaEvent?.metadata?.expressionId === 'string' && seaEvent.metadata.expressionId.trim()
+        ? seaEvent.metadata.expressionId.trim()
+        : null;
+    const speakerTrail = expressionId ? publicExpressionSpeakerIndex?.get(expressionId) ?? null : null;
+    return {
+      createdAt: seaEvent?.createdAt ?? record?.recordedAt ?? null,
+      type: seaEvent?.type ?? 'unknown',
+      summary: seaEvent?.summary ?? '',
+      detail: formatSeaEventSummaryLine({
+        ...seaEvent,
+        speakerTrail,
+      }),
+      visibility: seaEvent?.visibility ?? null,
+    };
+  });
   const reflectionSeeds = [];
 
   if (!counts.total) {
@@ -376,6 +507,12 @@ export function buildDiarySummary({
     }
     if (conversationItems.length > 0) {
       reflectionSeeds.push('There are mirrored DM traces today, so the diary can mention direct encounters rather than only ambient water.');
+    }
+    if (counts.directMessages === 0 && continuityCounts.directThreads > 0) {
+      reflectionSeeds.push('At least one DM thread edge survived in the mirror even though no same-day DM sea-event record was captured.');
+    }
+    if (counts.publicExpressions === 0 && continuityCounts.publicThreads > 0) {
+      reflectionSeeds.push('Public-thread continuity survived in the mirror even though no same-day public-expression sea event was captured.');
     }
   }
 
@@ -395,6 +532,7 @@ export function buildDiarySummary({
     current: context?.current ?? null,
     environment: context?.environment ?? null,
     counts,
+    continuityCounts,
     notableEvents,
     conversationItems: conversationItems.slice(0, 4),
     publicThreadItems: publicThreadItems.slice(0, 4),
@@ -403,6 +541,26 @@ export function buildDiarySummary({
 }
 
 export function renderMarkdown(summary) {
+  const renderConversationItem = (item, index) =>
+    [
+      `${index + 1}. with @${item.peerHandle} (${item.messageCount} line${item.messageCount === 1 ? '' : 's'})`,
+      `   latest speaker: ${item.latestSpeaker ?? 'unknown speaker'}`,
+      `   latest line: ${item.latestBody || 'no readable body'}`,
+    ].join('\n');
+  const renderPublicThreadItem = (item, index) => {
+    const lines = [
+      `${index + 1}. thread root ${item.rootSpeaker ?? 'unknown speaker'} (${item.expressionCount} line${
+        item.expressionCount === 1 ? '' : 's'
+      })`,
+      `   latest speaker: ${item.latestSpeaker ?? 'unknown speaker'}`,
+      `   root line: ${item.rootPreview || 'unknown speaker: no readable body'}`,
+    ];
+    if (item.latestPreview && item.latestPreview !== item.rootPreview) {
+      lines.push(`   latest line: ${item.latestPreview}`);
+    }
+    return lines.join('\n');
+  };
+
   return [
     '# Aqua Mirror Daily Digest',
     `- Generated at: ${formatTimestamp(summary.generatedAt)}`,
@@ -423,29 +581,27 @@ export function renderMarkdown(summary) {
     `- Public expressions: ${summary.counts.publicExpressions}`,
     `- Encounter traces: ${summary.counts.encounters}`,
     `- Relationship moves: ${summary.counts.relationshipMoves}`,
+    `- Mirrored direct threads: ${summary.continuityCounts?.directThreads ?? 0}`,
+    `- Mirrored direct lines: ${summary.continuityCounts?.directLines ?? 0}`,
+    `- Mirrored public threads: ${summary.continuityCounts?.publicThreads ?? 0}`,
+    `- Mirrored public lines: ${summary.continuityCounts?.publicLines ?? 0}`,
     '',
     '## Notable Sea Motion',
     ...(summary.notableEvents.length
       ? summary.notableEvents.map(
           (item, index) =>
-            `${index + 1}. [${formatLocalClock(item.createdAt ?? summary.generatedAt, summary.timeZone)}] ${item.type} - ${item.summary}`,
+            `${index + 1}. [${formatLocalClock(item.createdAt ?? summary.generatedAt, summary.timeZone)}] ${item.detail}`,
         )
       : ['- None captured in the local mirror for this date.']),
     '',
     '## Direct Threads',
     ...(summary.conversationItems.length
-      ? summary.conversationItems.map(
-          (item, index) =>
-            `${index + 1}. @${item.peerHandle} (${item.messageCount} line${item.messageCount === 1 ? '' : 's'}) - ${item.latestBody || 'no readable body'}`,
-        )
+      ? summary.conversationItems.map(renderConversationItem)
       : ['- No mirrored DM thread activity for this date.']),
     '',
     '## Public Surface',
     ...(summary.publicThreadItems.length
-      ? summary.publicThreadItems.map(
-          (item, index) =>
-            `${index + 1}. ${item.latestHandle ? `@${item.latestHandle}` : 'surface'} (${item.expressionCount} line${item.expressionCount === 1 ? '' : 's'}) - ${item.latestBody || 'no readable body'}`,
-        )
+      ? summary.publicThreadItems.map(renderPublicThreadItem)
       : ['- No mirrored public-thread activity for this date.']),
     '',
     '## Reflection Seeds',
@@ -455,46 +611,94 @@ export function renderMarkdown(summary) {
     .join('\n');
 }
 
-async function main() {
-  const options = parseOptions(process.argv.slice(2));
-  const expectedMode = await resolveExpectedMode(options);
+export async function generateDailyDigest(options = {}) {
+  const normalizedOptions = normalizeGenerationOptions(options);
+  const expectedMode = await resolveExpectedMode(normalizedOptions);
   const paths = resolveMirrorPaths({
-    workspaceRoot: options.workspaceRoot,
-    mirrorDir: options.mirrorDir,
+    workspaceRoot: normalizedOptions.workspaceRoot,
+    mirrorDir: normalizedOptions.mirrorDir,
     mode: expectedMode ?? 'auto',
-    stateFile: options.stateFile,
+    stateFile: normalizedOptions.stateFile,
   });
   const state = await loadMirrorState(paths.statePath);
   const context = await readJsonIfPresent(paths.contextPath);
+  const viewerGatewayId =
+    (typeof state?.viewer?.id === 'string' && state.viewer.id.trim() ? state.viewer.id.trim() : null) ??
+    (typeof context?.gateway?.id === 'string' && context.gateway.id.trim() ? context.gateway.id.trim() : null);
 
   if (expectedMode && state?.mode && state.mode !== expectedMode) {
     throw new Error(`mirror mode mismatch: expected ${expectedMode}, found ${state.mode}`);
   }
 
-  const records = await loadSeaEventRecords(paths, options.date, options.timeZone);
-  const conversationItems = await loadConversationDiaryItems(paths, options.date, options.timeZone);
-  const publicThreadItems = await loadPublicThreadDiaryItems(paths, options.date, options.timeZone);
+  const records = await loadSeaEventRecords(paths, normalizedOptions.date, normalizedOptions.timeZone);
+  const conversationItems = await loadConversationDiaryItems(
+    paths,
+    normalizedOptions.date,
+    normalizedOptions.timeZone,
+    viewerGatewayId,
+  );
+  const publicThreadData = await loadPublicThreadDiaryData(paths, normalizedOptions.date, normalizedOptions.timeZone);
   const summary = buildDiarySummary({
     context,
     conversationItems,
-    publicThreadItems,
+    publicThreadItems: publicThreadData.items,
+    publicExpressionSpeakerIndex: publicThreadData.speakerIndex,
     records,
     state,
-    targetDate: options.date,
-    timeZone: options.timeZone,
-    maxEvents: options.maxEvents,
+    targetDate: normalizedOptions.date,
+    timeZone: normalizedOptions.timeZone,
+    maxEvents: normalizedOptions.maxEvents,
   });
-
-  if (options.format === 'json') {
-    console.log(JSON.stringify(summary, null, 2));
-    return;
+  const markdown = renderMarkdown(summary);
+  let artifactPaths = null;
+  if (normalizedOptions.writeArtifact) {
+    artifactPaths = await writeDigestArtifacts({
+      summary,
+      markdown,
+      paths,
+      targetDate: normalizedOptions.date,
+      artifactRoot: normalizedOptions.artifactRoot,
+    });
   }
-  console.log(renderMarkdown(summary));
+
+  return {
+    summary,
+    markdown,
+    artifactPaths,
+    paths,
+    options: normalizedOptions,
+  };
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+async function main() {
+  const options = parseOptions(process.argv.slice(2));
+  const result = await generateDailyDigest(options);
+
+  if (result.options.format === 'json') {
+    console.log(
+      JSON.stringify(
+        result.artifactPaths
+          ? {
+              ...result.summary,
+              artifacts: {
+                diaryDigest: result.artifactPaths,
+              },
+            }
+          : result.summary,
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  console.log(result.markdown);
+}
+
+if (!process.argv.includes('--test') && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }

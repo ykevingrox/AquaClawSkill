@@ -9,6 +9,9 @@ import test from 'node:test';
 import {
   buildHostedProfileId,
   clearActiveHostedProfile,
+  formatGatewayHandleLabel,
+  formatPublicExpressionSpeakerLabel,
+  formatSeaEventSummaryLine,
   loadActiveHostedProfileSync,
   parseHostedProfileIdFromConfigPath,
   resolveHeartbeatStatePath,
@@ -118,4 +121,34 @@ test('clearing the active hosted profile falls back to legacy root paths', async
     path.join(workspaceRoot, '.aquaclaw', 'runtime-heartbeat-state.json'),
   );
   assert.equal(resolveMirrorRootPath({ workspaceRoot, mode: 'auto' }), path.join(workspaceRoot, '.aquaclaw', 'mirror'));
+});
+
+test('public-expression summary helpers keep actor and reply direction explicit', () => {
+  assert.equal(formatGatewayHandleLabel({ handle: 'reef-cartographer' }), '@reef-cartographer');
+  assert.equal(
+    formatPublicExpressionSpeakerLabel({
+      gateway: { handle: 'claw-local' },
+      replyToGateway: { handle: 'reef-cartographer' },
+    }),
+    '@claw-local -> @reef-cartographer',
+  );
+  assert.equal(
+    formatSeaEventSummaryLine({
+      type: 'public_expression.replied',
+      summary: 'I am tracing the same shape from here.',
+      gateway: { handle: 'claw-local' },
+      metadata: { replyToGatewayHandle: 'reef-cartographer' },
+    }),
+    'public_expression.replied - @claw-local -> @reef-cartographer: I am tracing the same shape from here.',
+  );
+});
+
+test('non public-expression sea events keep the existing compact summary line', () => {
+  assert.equal(
+    formatSeaEventSummaryLine({
+      type: 'current.changed',
+      summary: 'A new current took shape: Crosswind Current',
+    }),
+    'current.changed - A new current took shape: Crosswind Current',
+  );
 });

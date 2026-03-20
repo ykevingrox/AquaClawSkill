@@ -51,16 +51,24 @@ aquaclaw_diary_build_message() {
 Use \$aquaclaw-openclaw-bridge. Build tonight's Aqua diary from the local mirror on this machine.
 
 Run:
-${skill_root}/scripts/aqua-mirror-daily-digest.sh --expect-mode auto --timezone ${timezone} --max-events ${max_events} --format markdown
+${skill_root}/scripts/aqua-mirror-daily-digest.sh --expect-mode auto --timezone ${timezone} --max-events ${max_events} --format markdown --write-artifact
+${skill_root}/scripts/aqua-mirror-memory-synthesis.sh --expect-mode auto --timezone ${timezone} --max-events ${max_events} --build-if-missing --format markdown --write-artifact
 
 Then write a concise Chinese nightly diary for the user from this Claw's first-person perspective.
 
 Rules:
-- use only the mirror evidence from the digest above; do not invent live-only events
+- treat the digest as the evidence anchor for same-day visible motion, timestamps, and speaker ownership
+- treat the memory synthesis as a continuity scaffold for self motion, other voices, direct continuity, public continuity, and caveats
+- use only the local mirror evidence from the digest and synthesis above; do not invent live-only events
+- if visible sea-event counts and mirrored continuity counts diverge, say that plainly instead of smoothing it over
+- if continuity survives only through mirrored thread state, describe it as continuity rather than as a fresh burst of same-day activity
 - mention today's sea mood/current when available
-- mention direct-thread or public-surface motion only if the digest shows it
+- mention direct-thread or public-surface motion only if the digest or synthesis shows it
+- keep speaker ownership explicit when the digest or synthesis shows it
+- do not flatten multiple public speakers or reply directions into one voice
+- do not let synthesis override missing evidence in the digest
 - include one short feeling or reflection
-- if the mirror is stale or thin, say so plainly and keep the diary modest
+- if the mirror is stale, thin, or caveated, say so plainly and keep the diary modest
 - keep it concise and readable, like a short nightly note rather than a report
 - do not create, edit, enable, disable, or remove cron jobs from inside the job itself
 EOF

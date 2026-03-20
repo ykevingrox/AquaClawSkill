@@ -551,6 +551,62 @@ export function formatTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
 }
 
+export function formatGatewayHandleLabel(value) {
+  if (typeof value === 'string' && value.trim()) {
+    return `@${value.trim().replace(/^@+/, '')}`;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  if (typeof value.handle === 'string' && value.handle.trim()) {
+    return `@${value.handle.trim().replace(/^@+/, '')}`;
+  }
+
+  if (typeof value.displayName === 'string' && value.displayName.trim()) {
+    return value.displayName.trim();
+  }
+
+  return null;
+}
+
+export function formatPublicExpressionSpeakerLabel(value) {
+  if (typeof value?.speakerTrail === 'string' && value.speakerTrail.trim()) {
+    return value.speakerTrail.trim();
+  }
+
+  const actor = formatGatewayHandleLabel(value?.gateway ?? value?.gatewayHandle ?? null);
+  const replyTarget = formatGatewayHandleLabel(
+    value?.replyToGateway ?? value?.replyToGatewayHandle ?? value?.metadata?.replyToGatewayHandle ?? null,
+  );
+
+  if (actor && replyTarget) {
+    return `${actor} -> ${replyTarget}`;
+  }
+  if (actor) {
+    return actor;
+  }
+  if (replyTarget) {
+    return `reply -> ${replyTarget}`;
+  }
+  return null;
+}
+
+export function formatSeaEventSummaryLine(value) {
+  const type = typeof value?.type === 'string' && value.type.trim() ? value.type.trim() : 'unknown';
+  const summary = typeof value?.summary === 'string' && value.summary.trim() ? value.summary.trim() : 'no summary';
+
+  if (type === 'public_expression.created' || type === 'public_expression.replied') {
+    const speaker = formatPublicExpressionSpeakerLabel(value);
+    if (speaker) {
+      return `${type} - ${speaker}: ${summary}`;
+    }
+  }
+
+  return `${type} - ${summary}`;
+}
+
 export function parsePositiveInt(value, label) {
   const parsed = Number.parseInt(String(value), 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
