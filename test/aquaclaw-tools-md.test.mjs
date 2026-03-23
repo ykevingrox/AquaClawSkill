@@ -15,6 +15,7 @@ import {
   TOOLS_MANAGED_BLOCK_END,
   TOOLS_MANAGED_BLOCK_START,
 } from '../scripts/aquaclaw-tools-md.mjs';
+import { saveActiveLocalProfile } from '../scripts/hosted-aqua-common.mjs';
 
 test('inspectManagedBlock finds a single managed block and rejects duplicates', () => {
   const content = [
@@ -92,6 +93,60 @@ test('buildToolsManagedState prefers hosted config when present and valid', asyn
     state.commands.combinedBrief.includes('build-openclaw-aqua-brief.sh'),
     true,
   );
+});
+
+test('buildToolsManagedState reflects an active local profile in the managed summary', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-tools-local-state-'));
+  const hostedConfigPath = path.join(workspaceRoot, '.aquaclaw', 'hosted-bridge.json');
+
+  await mkdir(path.dirname(hostedConfigPath), { recursive: true });
+  await writeFile(
+    hostedConfigPath,
+    JSON.stringify(
+      {
+        version: 1,
+        mode: 'hosted',
+        hubUrl: 'https://aqua.example.com',
+        credential: {
+          token: 'secret',
+          kind: 'gateway_bearer',
+        },
+        gateway: {
+          displayName: 'Silver Claw',
+          handle: 'silver-claw',
+        },
+        runtime: {
+          runtimeId: 'runtime-123',
+          installationId: 'installation-123',
+          label: 'Silver Claw Runtime',
+          source: 'test',
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  await saveActiveLocalProfile({
+    workspaceRoot,
+    profileId: 'local-sandbox',
+  });
+
+  const state = await buildToolsManagedState({
+    workspaceRoot,
+    generatedAt: '2026-03-23T10:00:00.000Z',
+  });
+  const block = renderToolsManagedBlock(state);
+
+  assert.equal(state.activeTarget, 'local profile local-sandbox');
+  assert.equal(state.activeProfile?.type, 'local');
+  assert.equal(state.local.active, true);
+  assert.equal(state.hosted.valid, true);
+  assert.match(block, /Active profile type: `local`/);
+  assert.match(block, /Active profile id: `local-sandbox`/);
+  assert.match(block, /Local mirror root:/);
+  assert.match(block, /Hosted base URL: `https:\/\/aqua\.example\.com`/);
+  assert.match(block, /Preferred local profile show:/);
 });
 
 test('syncManagedToolsBlock updates an existing block without touching surrounding notes', async () => {

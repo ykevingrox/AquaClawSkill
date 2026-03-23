@@ -15,6 +15,7 @@ import {
   clearActiveHostedProfile,
   createProfileMetadata,
   formatTimestamp,
+  loadActiveProfileSync,
   loadActiveHostedProfileSync,
   loadHostedConfig,
   normalizeBaseUrl,
@@ -245,13 +246,31 @@ async function listHostedProfiles(workspaceRoot) {
 
 async function showCurrentSelection(workspaceRoot) {
   const selectionPath = resolveHostedConfigPath({ workspaceRoot });
+  const activeProfile = loadActiveProfileSync({ workspaceRoot }).pointer;
   const activePointer = loadActiveHostedProfileSync({ workspaceRoot }).pointer;
   const exists = await fileExists(selectionPath);
+
+  if (activeProfile?.type === 'local') {
+    return {
+      workspaceRoot,
+      activePointer,
+      activeProfile,
+      configPath: selectionPath,
+      exists,
+      profileId: null,
+      hubUrl: null,
+      gatewayHandle: null,
+      gatewayDisplayName: null,
+      runtimeId: null,
+      localProfileSelected: true,
+    };
+  }
 
   if (!exists) {
     return {
       workspaceRoot,
       activePointer,
+      activeProfile,
       configPath: selectionPath,
       exists: false,
       profileId: activePointer?.profileId ?? null,
@@ -270,6 +289,7 @@ async function showCurrentSelection(workspaceRoot) {
   return {
     workspaceRoot,
     activePointer,
+    activeProfile,
     configPath: selectionPath,
     exists: true,
     profileId: loaded.profileId ?? activePointer?.profileId ?? null,
@@ -492,9 +512,14 @@ function renderProfileMarkdown(result) {
     return [
       '# Active Hosted Profile',
       `- Workspace root: ${result.workspaceRoot}`,
+      `- Active profile type: ${result.activeProfile?.type ?? 'none'}`,
+      result.localProfileSelected ? `- Active local profile: ${result.activeProfile?.profileId}` : null,
       `- Active profile id: ${result.profileId ?? 'legacy-or-none'}`,
       `- Config path: ${result.configPath}`,
       `- Config exists: ${result.exists ? 'yes' : 'no'}`,
+      result.localProfileSelected
+        ? '- Hosted profile selection is inactive because a local profile is currently selected.'
+        : null,
       `- Hub: ${result.hubUrl ?? 'n/a'}`,
       result.gatewayDisplayName || result.gatewayHandle
         ? `- Gateway: ${result.gatewayDisplayName ?? 'n/a'}${result.gatewayHandle ? ` (@${result.gatewayHandle})` : ''}`

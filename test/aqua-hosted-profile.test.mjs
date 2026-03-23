@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-import { loadActiveHostedProfileSync, resolveHostedProfilePaths } from '../scripts/hosted-aqua-common.mjs';
+import { loadActiveHostedProfileSync, resolveHostedProfilePaths, saveActiveLocalProfile } from '../scripts/hosted-aqua-common.mjs';
 import { migrateLegacyHostedProfile } from '../scripts/aqua-hosted-profile.mjs';
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function writeLegacyHostedFixture(workspaceRoot) {
   const stateRoot = path.join(workspaceRoot, '.aquaclaw');
@@ -132,4 +136,27 @@ test('migrateLegacyHostedProfile refuses to overwrite an existing saved profile 
     () => migrateLegacyHostedProfile({ workspaceRoot }),
     /hosted profile config already exists/,
   );
+});
+
+test('aqua-hosted-profile show reports when a local profile is currently active', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-hosted-show-local-'));
+  await saveActiveLocalProfile({
+    workspaceRoot,
+    profileId: 'local-sandbox',
+  });
+
+  const scriptPath = path.join(testDir, '..', 'scripts', 'aqua-hosted-profile.mjs');
+  const result = spawnSync(
+    'node',
+    [scriptPath, 'show', '--workspace-root', workspaceRoot, '--format', 'json'],
+    {
+      encoding: 'utf8',
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.activeProfile.type, 'local');
+  assert.equal(payload.localProfileSelected, true);
+  assert.equal(payload.profileId, null);
 });

@@ -7,8 +7,12 @@ import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import {
+  loadActiveProfileSync,
   loadHostedConfig,
+  resolveCommunityMemoryRootPath,
   resolveHostedConfigPath,
+  resolveHeartbeatStatePath,
+  resolveMirrorRootPath,
   resolveWorkspaceRoot,
 } from './hosted-aqua-common.mjs';
 
@@ -221,6 +225,23 @@ async function loadHostedSummary({ workspaceRoot, configPath }) {
 }
 
 function buildActiveTargetSummary({ hosted, repoPath }) {
+  return buildActiveTargetSummaryWithProfile({
+    activeProfile: null,
+    hosted,
+    repoPath,
+  });
+}
+
+function buildActiveTargetSummaryWithProfile({ activeProfile, hosted, repoPath }) {
+  if (activeProfile?.type === 'local' && activeProfile.profileId) {
+    return `local profile ${activeProfile.profileId}`;
+  }
+  if (activeProfile?.type === 'hosted' && hosted.valid) {
+    return `hosted ${hosted.host}`;
+  }
+  if (activeProfile?.type === 'hosted' && hosted.present && !hosted.valid) {
+    return `hosted profile ${activeProfile.profileId} (invalid config)`;
+  }
   if (hosted.valid) {
     return `hosted ${hosted.host}`;
   }
@@ -253,6 +274,33 @@ export async function buildToolsManagedState({
     workspaceRoot: resolvedWorkspaceRoot,
     configPath,
   });
+  const activeProfile = loadActiveProfileSync({
+    workspaceRoot: resolvedWorkspaceRoot,
+  }).pointer;
+  const local = {
+    active: activeProfile?.type === 'local',
+    profileId: activeProfile?.type === 'local' ? activeProfile.profileId : null,
+    mirrorRoot:
+      activeProfile?.type === 'local'
+        ? resolveMirrorRootPath({
+            workspaceRoot: resolvedWorkspaceRoot,
+            mode: 'local',
+          })
+        : null,
+    heartbeatStatePath:
+      activeProfile?.type === 'local'
+        ? resolveHeartbeatStatePath({
+            workspaceRoot: resolvedWorkspaceRoot,
+            mode: 'local',
+          })
+        : null,
+    communityMemoryRoot:
+      activeProfile?.type === 'local'
+        ? resolveCommunityMemoryRootPath({
+            workspaceRoot: resolvedWorkspaceRoot,
+          })
+        : null,
+  };
   const stateRoot = path.join(resolvedWorkspaceRoot, '.aquaclaw');
   const refreshCommand = buildCommand({
     env: {
@@ -271,7 +319,10 @@ export async function buildToolsManagedState({
     skillRoot: SKILL_ROOT,
     repoPath: resolvedRepoPath,
     hosted,
-    activeTarget: buildActiveTargetSummary({
+    activeProfile,
+    local,
+    activeTarget: buildActiveTargetSummaryWithProfile({
+      activeProfile,
       hosted,
       repoPath: resolvedRepoPath,
     }),
@@ -335,6 +386,20 @@ export async function buildToolsManagedState({
             args: ['--format', 'markdown', '--include-encounters', '--include-scenes'],
           })
         : null,
+      localProfileShow: buildCommand({
+        env: {
+          OPENCLAW_WORKSPACE_ROOT: resolvedWorkspaceRoot,
+        },
+        program: path.join(SKILL_ROOT, 'scripts', 'aqua-local-profile.sh'),
+        args: ['show'],
+      }),
+      hostedProfileShow: buildCommand({
+        env: {
+          OPENCLAW_WORKSPACE_ROOT: resolvedWorkspaceRoot,
+        },
+        program: path.join(SKILL_ROOT, 'scripts', 'aqua-hosted-profile.sh'),
+        args: ['show'],
+      }),
     },
   };
 }
@@ -352,6 +417,8 @@ export function renderToolsManagedBlock(state) {
     `- Skill path: \`${state.skillRoot}\``,
     `- Repo path: ${state.repoPath ? `\`${state.repoPath}\`` : '_not found_'}`,
     `- Active target: \`${state.activeTarget}\``,
+    `- Active profile type: \`${state.activeProfile?.type ?? 'none'}\``,
+    `- Active profile id: \`${state.activeProfile?.profileId ?? 'none'}\``,
     `- Hosted config: \`${state.hosted.configPath}\``,
   ];
 
@@ -372,8 +439,16 @@ export function renderToolsManagedBlock(state) {
     lines.push('- Hosted status: _no hosted config present_');
   }
 
+  if (state.local.active) {
+    lines.push(`- Local mirror root: \`${state.local.mirrorRoot}\``);
+    lines.push(`- Local heartbeat state: \`${state.local.heartbeatStatePath}\``);
+    lines.push(`- Local community memory: \`${state.local.communityMemoryRoot}\``);
+  }
+
   lines.push(`- Preferred managed-block refresh: \`${state.commands.refreshManagedBlock}\``);
   lines.push(`- Preferred hosted onboard: \`${state.commands.hostedOnboard}\``);
+  lines.push(`- Preferred local profile show: \`${state.commands.localProfileShow}\``);
+  lines.push(`- Preferred hosted profile show: \`${state.commands.hostedProfileShow}\``);
   lines.push(`- Preferred combined brief: \`${state.commands.combinedBrief}\``);
   lines.push(`- Preferred mirror-only read: \`${state.commands.mirrorRead}\``);
   lines.push(`- Preferred mirror status read: \`${state.commands.mirrorStatus}\``);
