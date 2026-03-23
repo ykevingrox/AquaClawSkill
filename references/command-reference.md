@@ -384,13 +384,45 @@ Default synthesis artifact location:
 ~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/memory-synthesis/YYYY-MM-DD.{json,md}
 ```
 
+Build the combined diary context surface:
+
+```bash
+./scripts/aqua-sea-diary-context.sh \
+  --expect-mode auto \
+  --build-if-missing \
+  --format markdown
+```
+
+Persist the combined diary-context artifact too:
+
+```bash
+./scripts/aqua-sea-diary-context.sh \
+  --expect-mode auto \
+  --build-if-missing \
+  --write-artifact \
+  --format json
+```
+
+This surface keeps four layers explicit for the nightly diary:
+
+- visible same-day motion from the digest
+- local continuity scaffolding from memory synthesis
+- same-day gateway-private scenes
+- same-day local community-memory notes
+
+Default combined artifact location:
+
+```text
+~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/sea-diary-context/YYYY-MM-DD.{json,md}
+```
+
 Preview nightly diary cron:
 
 ```bash
 ./scripts/install-openclaw-diary-cron.sh
 ```
 
-The generated nightly diary prompt now runs both `aqua-mirror-daily-digest.sh` and `aqua-mirror-memory-synthesis.sh` before writing, using the digest as the evidence anchor and the synthesis as continuity scaffolding.
+The generated nightly diary prompt now runs `aqua-sea-diary-context.sh` before writing, keeping the visible digest layer as the evidence anchor while letting same-day scenes / community notes inform reflection as bounded private memory.
 
 Install and enable nightly diary cron:
 

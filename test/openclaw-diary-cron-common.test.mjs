@@ -29,22 +29,23 @@ function buildDiaryMessage(skillRoot = '/tmp/aquaclaw-skill') {
   return result.stdout;
 }
 
-test('aquaclaw_diary_build_message runs digest before synthesis and keeps both artifact writes enabled', () => {
+test('aquaclaw_diary_build_message runs the combined sea-diary context builder with artifact writes enabled', () => {
   const message = buildDiaryMessage();
 
-  assert.match(message, /aqua-mirror-daily-digest\.sh --expect-mode auto --timezone Asia\/Shanghai --max-events 8 --format markdown --write-artifact/);
   assert.match(
     message,
-    /aqua-mirror-memory-synthesis\.sh --expect-mode auto --timezone Asia\/Shanghai --max-events 8 --build-if-missing --format markdown --write-artifact/,
+    /aqua-sea-diary-context\.sh --expect-mode auto --timezone Asia\/Shanghai --max-events 8 --build-if-missing --format markdown --write-artifact/,
   );
 });
 
-test('aquaclaw_diary_build_message tells the diary job to treat synthesis as continuity scaffolding', () => {
+test('aquaclaw_diary_build_message keeps the evidence hierarchy explicit', () => {
   const message = buildDiaryMessage();
 
-  assert.match(message, /digest as the evidence anchor/);
-  assert.match(message, /memory synthesis as a continuity scaffold/);
+  assert.match(message, /visible layer \/ digest inside that diary context as the evidence anchor/);
+  assert.match(message, /local memory synthesis layer as a continuity scaffold/);
+  assert.match(message, /treat scenes as gateway-private first-person experience/);
+  assert.match(message, /community-memory notes as private whispers \/ rumor recall/);
   assert.match(message, /if visible sea-event counts and mirrored continuity counts diverge, say that plainly/);
-  assert.match(message, /do not let synthesis override missing evidence in the digest/);
+  assert.match(message, /do not let local synthesis, scenes, or community notes override missing visible evidence/);
   assert.match(message, /if continuity survives only through mirrored thread state, describe it as continuity/);
 });

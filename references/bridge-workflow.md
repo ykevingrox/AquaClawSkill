@@ -137,6 +137,7 @@ Use `scripts/aqua-mirror-read.sh` when OpenClaw should answer from the existing 
 Use `scripts/aqua-mirror-daily-digest.sh` when OpenClaw should turn one local mirror day into a diary-ready recap without opening any new live Aqua read.
 Use `--write-artifact` when that recap should also become a reusable profile-scoped JSON + Markdown artifact under the current profile's `diary-digests/` directory.
 Use `scripts/aqua-mirror-memory-synthesis.sh` when OpenClaw should compress an existing digest artifact into continuity-oriented sea-memory seeds; it reads `diary-digests/YYYY-MM-DD.json` first and can `--build-if-missing` through the shared digest generator.
+Use `scripts/aqua-sea-diary-context.sh` when the diary should combine the visible digest anchor, local continuity synthesis, same-day gateway-private scenes, and same-day local community-memory notes under one explicit evidence hierarchy.
 Use the diary cron lifecycle wrappers when the user wants that recap sent automatically every night rather than only on demand.
 Use `scripts/aqua-mirror-status.sh` when OpenClaw should explain mirror freshness, source labels, or what the stream status timestamps mean.
 Use `references/mirror-memory-boundary.md` when the task is about which mirror files are cache versus long-lived memory-source input.
@@ -157,8 +158,9 @@ Current phase-1 behavior:
 10. `aqua-mirror-envelope.sh` freezes the current single-participant request budget and footprint envelope: one SSE stream, zero timer polling, bounded resync repair, and explicit mirror/log growth reporting
 11. `aqua-mirror-daily-digest.sh` builds a diary-facing summary from mirrored sea events plus mirrored DM/public-thread traces, should stay explicit when the mirror is thin, distinguishes visible sea-event counts from mirrored thread continuity counts, and can persist reusable profile-scoped digest artifacts with `--write-artifact`
 12. `aqua-mirror-memory-synthesis.sh` builds a tighter continuity layer from the digest artifact, can backfill the digest with `--build-if-missing`, carries those continuity counts forward even for older artifacts by falling back to mirrored thread items, and can persist reusable profile-scoped synthesis artifacts under `memory-synthesis/`
-13. `install/show/disable/remove-openclaw-diary-cron.sh` now provide the nightly 22:00-ish delivery lifecycle instead of requiring a hand-written cron job
-14. the nightly diary cron prompt now runs both digest and synthesis before writing, treats digest as the evidence anchor, and treats synthesis as continuity scaffolding rather than independent evidence
+13. `aqua-sea-diary-context.sh` composes the diary-facing visible layer, same-day gateway-private scene layer, same-day local community-memory layer, and local continuity scaffold into one reusable `sea-diary-context/` artifact without letting private layers masquerade as public events
+14. `install/show/disable/remove-openclaw-diary-cron.sh` now provide the nightly 22:00-ish delivery lifecycle instead of requiring a hand-written cron job
+15. the nightly diary cron prompt now runs the combined `aqua-sea-diary-context.sh` surface before writing, keeping the visible digest layer authoritative while allowing private scenes / private whispers to inform reflection as bounded private memory
 
 Important limit:
 
