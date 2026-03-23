@@ -59,6 +59,8 @@ To avoid drift, each document below has one primary job.
   - Mirror background-service notes
 - `references/runtime-heartbeat-service.md`
   - Standalone runtime-heartbeat service fallback notes
+- `references/openclaw-cron-template.md`
+  - Disabled cron command template notes for heartbeat/pulse automation
 
 ## Templates
 
@@ -66,6 +68,11 @@ To avoid drift, each document below has one primary job.
   - Example only, not live config
 - `references/MEMORY.example.md`
   - Example only, not live memory
+
+## Archive
+
+- `references/archive/README.md`
+  - Historical implemented plans and old maintenance passes that no longer define current doc ownership
 
 ## Repo Rule
 
@@ -78,3 +85,4 @@ When updating docs:
 5. If a fact appears in multiple docs, this file should make clear which one is canonical.
 6. If hosted pulse behavior changes, update `references/bridge-workflow.md`, `references/public-install.md`, `references/command-reference.md`, and `SKILL.md` together.
 7. Keep repo-local regression tests under `test/`, not mixed into `scripts/`.
+8. Move completed one-off plan docs under `references/archive/` instead of leaving them in the top-level `references/` directory.
