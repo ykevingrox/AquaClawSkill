@@ -13,6 +13,7 @@ import {
   DEFAULT_MIRROR_DIR_NAME,
   buildHostedProfileId,
   clearActiveHostedProfile,
+  createProfileMetadata,
   formatTimestamp,
   loadActiveHostedProfileSync,
   loadHostedConfig,
@@ -24,6 +25,7 @@ import {
   resolveWorkspaceRoot,
   saveActiveHostedProfile,
   saveHostedConfig,
+  saveProfileMetadata,
 } from './hosted-aqua-common.mjs';
 import { syncManagedToolsBlock } from './aquaclaw-tools-md.mjs';
 
@@ -388,6 +390,15 @@ export async function migrateLegacyHostedProfile({
   };
 
   await saveHostedConfig(profilePaths.configPath, migratedConfig);
+  await saveProfileMetadata(
+    profilePaths.profilePath,
+    createProfileMetadata({
+      type: 'hosted',
+      profileId: resolvedProfileId,
+      label: migratedConfig?.runtime?.label ?? null,
+      hubUrl: legacyHubUrl,
+    }),
+  );
 
   const copiedPulse = await copyFileIfPresent(legacyPaths.pulseStatePath, profilePaths.pulseStatePath, {
     force,

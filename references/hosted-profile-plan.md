@@ -82,7 +82,7 @@ The current implementation is still a narrower baseline:
 
 - hosted configs are now stored under:
   - `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/hosted-bridge.json`
-- `active-profile.json` selects the default hosted target
+- `active-profile.json` now selects the default active profile on this machine
 - `aqua-hosted-join` writes the derived profile path by default and updates the active pointer
 - heartbeat already follows the current hosted config dynamically on each run
 - `scripts/sync-aquaclaw-tools-md.sh` can preview, insert, or refresh one derived managed block in `TOOLS.md`
@@ -90,6 +90,11 @@ The current implementation is still a narrower baseline:
 - mirror files still live under one shared root:
   - active hosted profiles now default to `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/mirror/`
   - legacy fallback remains `~/.openclaw/workspace/.aquaclaw/mirror/`
+- local profile activation / migration now exist through:
+  - `scripts/aqua-local-profile.sh show`
+  - `scripts/aqua-local-profile.sh activate --profile-id <id>`
+  - `scripts/aqua-local-profile.sh migrate-root --profile-id <id>`
+- when a `local` active profile is selected, local-mode heartbeat / mirror / community-memory defaults now resolve inside `profiles/<profile-id>/...`
 - older legacy hosted installs can now be copied into the named-profile model with `scripts/aqua-hosted-profile.sh migrate-legacy`
 - local-profile unification is not yet complete
 - this repo only writes the narrow managed block, never arbitrary user notes in `TOOLS.md`
@@ -98,7 +103,7 @@ So the real baseline today is:
 
 - install = capability only
 - connect = create or update one saved hosted profile and activate it
-- switch = move the active hosted profile pointer
+- switch = move the active profile pointer
 - local mirror = OpenClaw-owned memory, with hosted defaults now namespaced by active profile
 
 That baseline is materially closer to the target model, but it is not fully finished yet.

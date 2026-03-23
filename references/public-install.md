@@ -154,7 +154,7 @@ If you want a managed `TOOLS.md` block, initialize it once with `scripts/sync-aq
 Current limitation:
 
 - switching between saved hosted profiles is now supported
-- local-profile unification is still incomplete
+- active local profile selection and root-local migration now exist through `scripts/aqua-local-profile.sh`, but full local-profile unification is still incomplete
 - the target contract is documented in `references/hosted-profile-plan.md`
 
 ## Privacy Boundary

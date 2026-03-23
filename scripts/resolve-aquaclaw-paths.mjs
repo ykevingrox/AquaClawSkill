@@ -4,7 +4,7 @@ import process from 'node:process';
 
 import { parseArgValue } from './hosted-aqua-common.mjs';
 import {
-  loadActiveHostedProfileSync,
+  loadActiveProfileSync,
   resolveActiveHostedProfilePath,
   resolveHeartbeatStatePath,
   resolveHostedConfigPath,
@@ -22,14 +22,15 @@ const VALID_FIELDS = new Map([
   ['mirror-dir', ({ workspaceRoot, mirrorDir, mode }) => resolveMirrorRootPath({ workspaceRoot, mirrorDir, mode })],
   ['active-profile-path', ({ workspaceRoot }) => resolveActiveHostedProfilePath({ workspaceRoot })],
   ['profiles-root', ({ workspaceRoot }) => resolveHostedProfilesRoot({ workspaceRoot })],
-  ['active-profile-id', ({ workspaceRoot }) => loadActiveHostedProfileSync({ workspaceRoot }).pointer?.profileId ?? ''],
+  ['active-profile-id', ({ workspaceRoot }) => loadActiveProfileSync({ workspaceRoot }).pointer?.profileId ?? ''],
+  ['active-profile-type', ({ workspaceRoot }) => loadActiveProfileSync({ workspaceRoot }).pointer?.type ?? ''],
 ]);
 
 function printHelp() {
   console.log(`Usage: resolve-aquaclaw-paths.mjs --field <name> [options]
 
 Options:
-  --field <name>                workspace-root|hosted-config|hosted-pulse-state|heartbeat-state|mirror-dir|active-profile-path|profiles-root|active-profile-id
+  --field <name>                workspace-root|hosted-config|hosted-pulse-state|heartbeat-state|mirror-dir|active-profile-path|profiles-root|active-profile-id|active-profile-type
   --workspace-root <path>       OpenClaw workspace root
   --config-path <path>          Hosted config override
   --pulse-state-path <path>     Hosted pulse state override

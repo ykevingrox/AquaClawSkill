@@ -83,7 +83,7 @@ The source of truth is:
 
 Important files:
 
-- active hosted target pointer:
+- active profile pointer:
   `~/.openclaw/workspace/.aquaclaw/active-profile.json`
 - one hosted profile config:
   `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/hosted-bridge.json`

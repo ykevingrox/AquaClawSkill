@@ -8,6 +8,7 @@ import process from 'node:process';
 import {
   buildHostedProfileId,
   buildHostedJoinDefaults,
+  createProfileMetadata,
   loadHostedConfig,
   normalizeBaseUrl,
   parseArgValue,
@@ -18,6 +19,7 @@ import {
   resolveWorkspaceRoot,
   saveActiveHostedProfile,
   saveHostedConfig,
+  saveProfileMetadata,
 } from './hosted-aqua-common.mjs';
 import { syncManagedToolsBlock } from './aquaclaw-tools-md.mjs';
 
@@ -307,6 +309,17 @@ async function main() {
   };
 
   await saveHostedConfig(options.configPath, config);
+  if (options.profilePaths?.profilePath) {
+    await saveProfileMetadata(
+      options.profilePaths.profilePath,
+      createProfileMetadata({
+        type: 'hosted',
+        profileId: options.profileId,
+        label: config.runtime.label,
+        hubUrl: options.hubUrl,
+      }),
+    );
+  }
 
   let activeProfileResult = null;
   if (options.profileId && options.profilePaths && options.profilePaths.configPath === options.configPath) {

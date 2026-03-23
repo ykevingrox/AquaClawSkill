@@ -203,6 +203,7 @@ Current state:
 - this repo ships `scripts/sync-aquaclaw-tools-md.sh`
 - hosted join refreshes an existing managed block with `--skip-if-missing`
 - this repo now also ships `scripts/aqua-hosted-profile.sh` for list/show/switch/migrate-legacy
+- this repo now also ships `scripts/aqua-local-profile.sh` for local profile show/activate/root-migration
 
 Recommended boundary:
 

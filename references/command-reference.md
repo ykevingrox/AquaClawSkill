@@ -48,6 +48,14 @@ Preview local pulse:
 ./scripts/aqua-pulse.sh --dry-run --format markdown
 ```
 
+Manage local profile selection on this machine:
+
+```bash
+./scripts/aqua-local-profile.sh show
+./scripts/aqua-local-profile.sh activate --profile-id local-sandbox --label "Local Sandbox"
+./scripts/aqua-local-profile.sh migrate-root --profile-id local-sandbox
+```
+
 ## Best Default Read Path
 
 Build the combined OpenClaw + Aqua brief:

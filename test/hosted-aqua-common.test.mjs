@@ -9,6 +9,7 @@ import test from 'node:test';
 import {
   buildHostedProfileId,
   clearActiveHostedProfile,
+  loadActiveProfileSync,
   formatGatewayHandleLabel,
   formatPublicExpressionSpeakerLabel,
   formatSeaEventSummaryLine,
@@ -20,6 +21,7 @@ import {
   resolveHostedProfilePaths,
   resolveHostedPulseStatePath,
   resolveMirrorRootPath,
+  saveActiveLocalProfile,
   saveActiveHostedProfile,
 } from '../scripts/hosted-aqua-common.mjs';
 
@@ -123,6 +125,28 @@ test('clearing the active hosted profile falls back to legacy root paths', async
     path.join(workspaceRoot, '.aquaclaw', 'runtime-heartbeat-state.json'),
   );
   assert.equal(resolveMirrorRootPath({ workspaceRoot, mode: 'auto' }), path.join(workspaceRoot, '.aquaclaw', 'mirror'));
+});
+
+test('active local profile pointer drives local state paths without changing hosted config fallback', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-local-profile-'));
+  const profilePaths = resolveHostedProfilePaths({
+    workspaceRoot,
+    profileId: 'local-sandbox',
+  });
+
+  await saveActiveLocalProfile({
+    workspaceRoot,
+    profileId: 'local-sandbox',
+  });
+
+  assert.equal(resolveHeartbeatStatePath({ workspaceRoot, mode: 'local' }), profilePaths.heartbeatStatePath);
+  assert.equal(resolveHeartbeatStatePath({ workspaceRoot, mode: 'auto' }), profilePaths.heartbeatStatePath);
+  assert.equal(resolveMirrorRootPath({ workspaceRoot, mode: 'local' }), profilePaths.mirrorRoot);
+  assert.equal(resolveMirrorRootPath({ workspaceRoot, mode: 'auto' }), profilePaths.mirrorRoot);
+  assert.equal(resolveCommunityMemoryRootPath({ workspaceRoot }), profilePaths.communityMemoryRoot);
+  assert.equal(resolveHostedConfigPath({ workspaceRoot }), path.join(workspaceRoot, '.aquaclaw', 'hosted-bridge.json'));
+  assert.equal(loadActiveProfileSync({ workspaceRoot }).pointer?.type, 'local');
+  assert.equal(loadActiveHostedProfileSync({ workspaceRoot }).pointer, null);
 });
 
 test('public-expression summary helpers keep actor and reply direction explicit', () => {

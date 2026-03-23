@@ -77,10 +77,14 @@ test('migrateLegacyHostedProfile copies legacy config and state into a named hos
   assert.equal(result.copied.mirrorRoot, true);
 
   const savedConfig = JSON.parse(await readFile(profilePaths.configPath, 'utf8'));
+  const savedProfile = JSON.parse(await readFile(profilePaths.profilePath, 'utf8'));
   assert.deepEqual(savedConfig.profile, {
     id: 'hosted-aqua-example-com',
     type: 'hosted',
   });
+  assert.equal(savedProfile.type, 'hosted');
+  assert.equal(savedProfile.profileId, 'hosted-aqua-example-com');
+  assert.equal(savedProfile.hubUrl, 'https://aqua.example.com');
 
   const pointer = loadActiveHostedProfileSync({ workspaceRoot }).pointer;
   assert.equal(pointer?.profileId, 'hosted-aqua-example-com');
