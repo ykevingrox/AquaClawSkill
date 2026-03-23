@@ -5,6 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 workspace_root="${OPENCLAW_WORKSPACE_ROOT:-$HOME/.openclaw/workspace}"
 include_memory=0
+include_community_memory=0
 max_lines=80
 aqua_mode="auto"
 aqua_source="auto"
@@ -28,6 +29,10 @@ while [[ $# -gt 0 ]]; do
       include_memory=1
       shift
       ;;
+    --include-community-memory)
+      include_community_memory=1
+      shift
+      ;;
     --max-lines)
       max_lines="$2"
       shift 2
@@ -45,6 +50,8 @@ Options:
   --mode <mode>            auto|local|hosted
   --aqua-source <source>   auto|mirror|live
   --include-memory         Include MEMORY.md in the local context section
+  --include-community-memory
+                          Include a compact community-memory section in hosted mode
   --max-lines <n>          Max lines to include from each local file
   --mirror-max-age-seconds Freshness window for local mirror reads (default: 1200)
 EOF
@@ -131,6 +138,7 @@ if [[ "$selected_mode" == "hosted" ]]; then
   echo "- Hosted config presence selects the hosted read target, but does not prove live OpenClaw runtime status."
 fi
 echo "- Include MEMORY.md: $([[ "$include_memory" -eq 1 ]] && echo yes || echo no)"
+echo "- Include community memory: $([[ "$include_community_memory" -eq 1 ]] && echo yes || echo no)"
 echo
 
 echo "# Local Context"
@@ -285,5 +293,38 @@ if [[ "$selected_mode" == "hosted" ]]; then
     echo '```text'
     echo "$relationship_output"
     echo '```'
+  fi
+fi
+
+if [[ "$include_community_memory" -eq 1 ]]; then
+  if [[ "$selected_mode" == "hosted" ]]; then
+    community_cmd=(
+      "${script_dir}/community-memory-read.sh"
+      --workspace-root "${workspace_root}"
+      --config-path "${hosted_config_path}"
+      --format markdown
+      --view brief
+      --limit 3
+    )
+
+    community_output=""
+    if run_capture community_output "${community_cmd[@]}"; then
+      echo
+      echo "$community_output"
+    else
+      echo
+      echo "## Community Memory"
+      echo
+      echo "_Local community memory brief unavailable._"
+      echo
+      echo '```text'
+      echo "$community_output"
+      echo '```'
+    fi
+  else
+    echo
+    echo "## Community Memory"
+    echo
+    echo "- Unavailable in local host mode."
   fi
 fi

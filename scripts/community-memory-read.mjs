@@ -13,6 +13,8 @@ import {
 import { formatTimestamp, parseArgValue, parsePositiveInt } from './hosted-aqua-common.mjs';
 
 const VALID_FORMATS = new Set(['json', 'markdown']);
+const VALID_VIEWS = new Set(['full', 'brief']);
+export const DEFAULT_COMMUNITY_MEMORY_BRIEF_LIMIT = 3;
 
 function printHelp() {
   console.log(`Usage: community-memory-read.mjs [options]
@@ -26,6 +28,7 @@ Options:
   --venue-slug <slug>            Filter by venue slug
   --tag <tag>                    Filter by tag
   --format <fmt>                 json|markdown (default: markdown)
+  --view <view>                  full|brief (default: full)
   --help                         Show this message
 
 Notes:
@@ -43,6 +46,7 @@ export function parseOptions(argv) {
     limit: Number.parseInt(process.env.AQUACLAW_COMMUNITY_MEMORY_READ_LIMIT || String(DEFAULT_COMMUNITY_MEMORY_PAGE_SIZE), 10),
     tag: null,
     venueSlug: null,
+    view: 'full',
     workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT || null,
   };
 
@@ -109,11 +113,21 @@ export function parseOptions(argv) {
       }
       continue;
     }
+    if (arg.startsWith('--view')) {
+      options.view = parseArgValue(argv, index, arg, '--view').trim().toLowerCase();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
     throw new Error(`unknown option: ${arg}`);
   }
 
   if (!VALID_FORMATS.has(options.format)) {
     throw new Error('--format must be json or markdown');
+  }
+  if (!VALID_VIEWS.has(options.view)) {
+    throw new Error('--view must be full or brief');
   }
 
   return options;
@@ -157,6 +171,104 @@ function formatReadResultMarkdown(result) {
   return lines.join('\n');
 }
 
+export function summarizeCommunityMemoryNoteForBrief(note) {
+  const mentionPolicy = note?.mentionPolicy ?? 'n/a';
+  const summary = typeof note?.summary === 'string' ? note.summary.trim() : '';
+  const summaryVisible = mentionPolicy !== 'private_only' && summary.length > 0;
+
+  return {
+    id: note?.id ?? null,
+    createdAt: note?.createdAt ?? null,
+    npcId: note?.npcId ?? null,
+    venueSlug: note?.venueSlug ?? null,
+    tags: Array.isArray(note?.tags) ? [...note.tags] : [],
+    mentionPolicy,
+    freshnessScore: note?.freshnessScore ?? null,
+    summary: summaryVisible ? summary : null,
+    summaryVisible,
+    redactionReason: mentionPolicy === 'private_only' ? 'private_only' : summaryVisible ? null : 'missing_summary',
+  };
+}
+
+export function summarizeCommunityMemoryForBrief(result) {
+  return {
+    mode: 'brief',
+    scope: 'local_profile_mirror',
+    paths: {
+      communityMemoryRoot: result.paths.communityMemoryRoot,
+      profileId: result.paths.profileId ?? 'legacy',
+    },
+    state: {
+      lastSyncedAt: result.state.lastSyncedAt,
+      totalKnownNotes: result.state.totalKnownNotes,
+      fullBackfillCompletedAt: result.state.fullBackfillCompletedAt,
+      returnedItems: result.page.items.length,
+      nextCursor: result.page.nextCursor ?? null,
+    },
+    recoveredIndex: result.recoveredIndex,
+    recoveredIndexReason: result.recoveredIndexReason,
+    recoveredState: result.recoveredState,
+    recoveredStateReason: result.recoveredStateReason,
+    items: result.page.items.map((note) => summarizeCommunityMemoryNoteForBrief(note)),
+  };
+}
+
+function formatBriefNoteMarkdown(note, index) {
+  const lines = [
+    `${index + 1}. [${formatTimestamp(note.createdAt)}] ${note.npcId ?? 'unknown'} | ${note.venueSlug ?? 'no-venue'}`,
+  ];
+
+  if (note.summaryVisible && note.summary) {
+    lines.push(`   summary: ${note.summary}`);
+  } else if (note.redactionReason === 'private_only') {
+    lines.push('   summary: (private-only note retained locally)');
+  } else {
+    lines.push('   summary: (no sharable summary)');
+  }
+  if (note.tags.length > 0) {
+    lines.push(`   tags: ${note.tags.join(', ')}`);
+  }
+  lines.push(`   mention: ${note.mentionPolicy} | freshness: ${note.freshnessScore ?? 'n/a'}`);
+  return lines.join('\n');
+}
+
+export function formatCommunityMemoryBriefMarkdown(
+  summary,
+  {
+    title = '## Community Memory',
+  } = {},
+) {
+  const lines = [
+    title,
+    `- Profile: ${summary.paths.profileId ?? 'legacy'}`,
+    `- Last sync: ${formatTimestamp(summary.state.lastSyncedAt)}`,
+    `- Total notes: ${summary.state.totalKnownNotes}`,
+    `- Notes shown: ${summary.state.returnedItems}`,
+    `- Backfill complete: ${summary.state.fullBackfillCompletedAt ? 'yes' : 'no'}`,
+    '- Scope: compact local inspection only; note bodies are omitted here.',
+    '- Privacy rule: private_only notes stay redacted in this surface.',
+  ];
+
+  if (summary.recoveredState) {
+    lines.push(`- State recovery: ${summary.recoveredStateReason ?? 'yes'}`);
+  }
+  if (summary.recoveredIndex) {
+    lines.push(`- Index recovery: ${summary.recoveredIndexReason ?? 'yes'}`);
+  }
+  if (summary.state.nextCursor) {
+    lines.push(`- Next cursor: ${summary.state.nextCursor}`);
+  }
+  if (summary.items.length > 0) {
+    lines.push('');
+    lines.push(...summary.items.map((note, index) => formatBriefNoteMarkdown(note, index)));
+  } else {
+    lines.push('');
+    lines.push('- No local community memory notes yet.');
+  }
+
+  return lines.join('\n');
+}
+
 export async function readCommunityMemory({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
   configPath = process.env.AQUACLAW_HOSTED_CONFIG,
@@ -195,11 +307,16 @@ export async function readCommunityMemory({
 async function main(argv = process.argv.slice(2)) {
   const options = parseOptions(argv);
   const result = await readCommunityMemory(options);
+  const payload = options.view === 'brief' ? summarizeCommunityMemoryForBrief(result) : result;
   if (options.format === 'json') {
-    console.log(JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(payload, null, 2));
     return;
   }
-  console.log(formatReadResultMarkdown(result));
+  console.log(
+    options.view === 'brief'
+      ? formatCommunityMemoryBriefMarkdown(payload)
+      : formatReadResultMarkdown(result),
+  );
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
+import {
+  DEFAULT_COMMUNITY_MEMORY_BRIEF_LIMIT,
+  formatCommunityMemoryBriefMarkdown,
+  readCommunityMemory,
+  summarizeCommunityMemoryForBrief,
+} from './community-memory-read.mjs';
 import {
   formatSeaEventSummaryLine,
   formatTimestamp,
@@ -13,6 +20,7 @@ import {
 
 const VALID_FEED_SCOPES = new Set(['mine', 'all', 'friends', 'system']);
 const VALID_FORMATS = new Set(['json', 'markdown']);
+export const DEFAULT_HOSTED_CONTEXT_COMMUNITY_MEMORY_LIMIT = DEFAULT_COMMUNITY_MEMORY_BRIEF_LIMIT;
 
 function printHelp() {
   console.log(`Usage: aqua-hosted-context.mjs [options]
@@ -25,14 +33,16 @@ Options:
   --format <fmt>               Output format: json|markdown (default: json)
   --include-encounters         Include encounters
   --include-scenes             Include scenes
+  --include-community-memory   Include a compact local community-memory section
   --help                       Show this message
 `);
 }
 
-function parseOptions(argv) {
+export function parseOptions(argv) {
   const options = {
     configPath: process.env.AQUACLAW_HOSTED_CONFIG,
     format: 'json',
+    includeCommunityMemory: false,
     includeEncounters: false,
     includeScenes: false,
     limit: 12,
@@ -53,6 +63,10 @@ function parseOptions(argv) {
     }
     if (arg === '--include-scenes') {
       options.includeScenes = true;
+      continue;
+    }
+    if (arg === '--include-community-memory') {
+      options.includeCommunityMemory = true;
       continue;
     }
     if (arg.startsWith('--workspace-root')) {
@@ -116,7 +130,7 @@ function formatCollectionMarkdown(title, items, formatter) {
   return [title, ...items.map(formatter)].join('\n');
 }
 
-function renderMarkdown(snapshot) {
+export function renderMarkdown(snapshot) {
   const sections = [
     '# Aqua Context',
     `- Generated at: ${formatTimestamp(snapshot.generatedAt)}`,
@@ -186,6 +200,10 @@ function renderMarkdown(snapshot) {
     );
   }
 
+  if (snapshot.communityMemory) {
+    sections.push('', formatCommunityMemoryBriefMarkdown(snapshot.communityMemory));
+  }
+
   const warningLines = [];
   if (snapshot.runtime.bound && snapshot.runtime.runtime.status !== 'online') {
     warningLines.push('This participant has joined Aqua and has a runtime binding, but the current runtime status is not online.');
@@ -200,24 +218,30 @@ function renderMarkdown(snapshot) {
   return sections.join('\n');
 }
 
-async function main() {
-  const options = parseOptions(process.argv.slice(2));
-  const loaded = await loadHostedConfig({
+export async function buildHostedContextSnapshot(
+  options,
+  {
+    loadHostedConfigFn = loadHostedConfig,
+    requestJsonFn = requestJson,
+    readCommunityMemoryFn = readCommunityMemory,
+  } = {},
+) {
+  const loaded = await loadHostedConfigFn({
     workspaceRoot: options.workspaceRoot,
     configPath: options.configPath,
   });
   const token = loaded.config.credential.token;
   const warnings = [];
 
-  const health = await requestJson(loaded.config.hubUrl, '/health');
-  const me = await requestJson(loaded.config.hubUrl, '/api/v1/gateways/me', {
+  const health = await requestJsonFn(loaded.config.hubUrl, '/health');
+  const me = await requestJsonFn(loaded.config.hubUrl, '/api/v1/gateways/me', {
     token,
   });
-  const aqua = await requestJson(loaded.config.hubUrl, '/api/v1/public/aqua');
+  const aqua = await requestJsonFn(loaded.config.hubUrl, '/api/v1/public/aqua');
 
   let runtime;
   try {
-    const remote = await requestJson(loaded.config.hubUrl, '/api/v1/runtime/remote/me', {
+    const remote = await requestJsonFn(loaded.config.hubUrl, '/api/v1/runtime/remote/me', {
       token,
     });
     runtime = {
@@ -236,11 +260,11 @@ async function main() {
     }
   }
 
-  const environment = await requestJson(loaded.config.hubUrl, '/api/v1/environment/current', {
+  const environment = await requestJsonFn(loaded.config.hubUrl, '/api/v1/environment/current', {
     token,
   });
-  const current = await requestJson(loaded.config.hubUrl, '/api/v1/currents/current');
-  const seaFeed = await requestJson(
+  const current = await requestJsonFn(loaded.config.hubUrl, '/api/v1/currents/current');
+  const seaFeed = await requestJsonFn(
     loaded.config.hubUrl,
     `/api/v1/sea/feed?scope=${encodeURIComponent(options.scope)}&limit=${options.limit}`,
     {
@@ -250,7 +274,7 @@ async function main() {
 
   let encounters = null;
   if (options.includeEncounters) {
-    const payload = await requestJson(loaded.config.hubUrl, `/api/v1/encounters?limit=${options.limit}`, {
+    const payload = await requestJsonFn(loaded.config.hubUrl, `/api/v1/encounters?limit=${options.limit}`, {
       token,
     });
     encounters = payload.data;
@@ -258,13 +282,23 @@ async function main() {
 
   let scenes = null;
   if (options.includeScenes) {
-    const payload = await requestJson(loaded.config.hubUrl, `/api/v1/scenes/mine?limit=${options.limit}`, {
+    const payload = await requestJsonFn(loaded.config.hubUrl, `/api/v1/scenes/mine?limit=${options.limit}`, {
       token,
     });
     scenes = payload.data;
   }
 
-  const snapshot = {
+  let communityMemory = null;
+  if (options.includeCommunityMemory) {
+    const result = await readCommunityMemoryFn({
+      workspaceRoot: loaded.workspaceRoot,
+      configPath: loaded.configPath,
+      limit: DEFAULT_HOSTED_CONTEXT_COMMUNITY_MEMORY_LIMIT,
+    });
+    communityMemory = summarizeCommunityMemoryForBrief(result);
+  }
+
+  return {
     generatedAt: new Date().toISOString(),
     mode: 'hosted',
     hub: {
@@ -281,10 +315,16 @@ async function main() {
       limit: options.limit,
       items: seaFeed?.data?.items ?? [],
     },
+    communityMemory,
     encounters,
     scenes,
     warnings,
   };
+}
+
+async function main() {
+  const options = parseOptions(process.argv.slice(2));
+  const snapshot = await buildHostedContextSnapshot(options);
 
   if (options.format === 'markdown') {
     console.log(renderMarkdown(snapshot));
@@ -294,9 +334,11 @@ async function main() {
   console.log(JSON.stringify(snapshot, null, 2));
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }

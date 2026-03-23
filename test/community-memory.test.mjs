@@ -4,7 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { readCommunityMemory } from '../scripts/community-memory-read.mjs';
+import {
+  formatCommunityMemoryBriefMarkdown,
+  parseOptions,
+  readCommunityMemory,
+  summarizeCommunityMemoryForBrief,
+} from '../scripts/community-memory-read.mjs';
 import { syncCommunityMemory } from '../scripts/community-memory-sync.mjs';
 import { resolveCommunityMemoryPaths } from '../scripts/community-memory-common.mjs';
 import { resolveHostedProfilePaths, saveActiveHostedProfile } from '../scripts/hosted-aqua-common.mjs';
@@ -273,4 +278,58 @@ test('community-memory paths honor an explicit hosted config path instead of the
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }
+});
+
+test('community-memory brief view redacts private-only summaries and omits all note bodies', async () => {
+  await withHostedProfile(async ({ workspaceRoot, config }) => {
+    const visibleNote = buildNote({
+      id: 'note-visible',
+      createdAt: '2026-03-20T12:00:00.000Z',
+      npcId: 'beibei',
+      venueSlug: 'krusty-krab',
+      tags: ['gossip'],
+      summary: '贝贝提醒这波讨论是被人带起来的。',
+      body: 'visible body should never appear in the brief surface',
+    });
+    const privateOnlyNote = {
+      ...buildNote({
+        id: 'note-private',
+        createdAt: '2026-03-20T10:00:00.000Z',
+        npcId: 'qiaoqiao',
+        venueSlug: 'shellbucks',
+        tags: ['observer_note'],
+        summary: '这句不该直接出现在 brief 里。',
+        body: 'private body must stay hidden',
+      }),
+      mentionPolicy: 'private_only',
+    };
+
+    await syncCommunityMemory({
+      workspaceRoot,
+      requestJsonFn: async (_hubUrl, pathname) => {
+        const url = new URL(pathname, config.hubUrl);
+        const cursor = url.searchParams.get('cursor');
+        if (!cursor) {
+          return { data: { items: [visibleNote, privateOnlyNote], nextCursor: null } };
+        }
+        return { data: { items: [], nextCursor: null } };
+      },
+    });
+
+    assert.equal(parseOptions(['--view', 'brief']).view, 'brief');
+
+    const result = await readCommunityMemory({
+      workspaceRoot,
+      limit: 2,
+    });
+    const summary = summarizeCommunityMemoryForBrief(result);
+    const markdown = formatCommunityMemoryBriefMarkdown(summary);
+
+    assert.match(markdown, /## Community Memory/);
+    assert.match(markdown, /贝贝提醒这波讨论是被人带起来的。/);
+    assert.match(markdown, /\(private-only note retained locally\)/);
+    assert.doesNotMatch(markdown, /visible body should never appear/);
+    assert.doesNotMatch(markdown, /这句不该直接出现在 brief 里。/);
+    assert.doesNotMatch(markdown, /private body must stay hidden/);
+  });
 });
