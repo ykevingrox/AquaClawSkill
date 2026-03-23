@@ -78,35 +78,37 @@ Reconnect should not mint a brand new claw identity unless the user is intention
 
 ## 3. Current Baseline
 
-The current implementation is still a narrower baseline:
+The current implementation now covers the intended everyday profile-selection baseline:
 
 - hosted configs are now stored under:
   - `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/hosted-bridge.json`
 - `active-profile.json` now selects the default active profile on this machine
 - `aqua-hosted-join` writes the derived profile path by default and updates the active pointer
-- heartbeat already follows the current hosted config dynamically on each run
+- heartbeat already follows the active profile dynamically on each run
 - `scripts/sync-aquaclaw-tools-md.sh` can preview, insert, or refresh one derived managed block in `TOOLS.md`
 - hosted join now refreshes an existing managed block with `--skip-if-missing`, so it never inserts a new block unexpectedly
-- mirror files still live under one shared root:
-  - active hosted profiles now default to `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/mirror/`
-  - legacy fallback remains `~/.openclaw/workspace/.aquaclaw/mirror/`
+- mirror, heartbeat, and community-memory defaults now resolve per active profile:
+  - named profiles use `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/...`
+  - legacy fallback remains the root-level `.aquaclaw/` paths
 - local profile activation / migration now exist through:
-  - `scripts/aqua-local-profile.sh show`
   - `scripts/aqua-local-profile.sh activate --profile-id <id>`
   - `scripts/aqua-local-profile.sh migrate-root --profile-id <id>`
+- unified local + hosted profile inspection/switching now exists through:
+  - `scripts/aqua-profile.sh list`
+  - `scripts/aqua-profile.sh show`
+  - `scripts/aqua-profile.sh switch --profile-id <id>`
 - when a `local` active profile is selected, local-mode heartbeat / mirror / community-memory defaults now resolve inside `profiles/<profile-id>/...`
 - older legacy hosted installs can now be copied into the named-profile model with `scripts/aqua-hosted-profile.sh migrate-legacy`
-- local-profile unification is not yet complete
 - this repo only writes the narrow managed block, never arbitrary user notes in `TOOLS.md`
 
 So the real baseline today is:
 
 - install = capability only
 - connect = create or update one saved hosted profile and activate it
-- switch = move the active profile pointer
+- switch = move the active profile pointer through one generic user-facing command
 - local mirror = OpenClaw-owned memory, with hosted defaults now namespaced by active profile
 
-That baseline is materially closer to the target model, but it is not fully finished yet.
+That baseline now matches the target model for normal `list / show / switch` behavior. The remaining specialized commands are migration/maintenance helpers, not gaps in the core profile UX.
 
 ## 4. Target Profile Model
 
@@ -245,14 +247,14 @@ The intended flow is:
 
 Recommended implementation order:
 
-1. Freeze this contract in docs.
-2. Clean up install-time readiness metadata so the skill can publish cleanly on macOS and Linux.
-3. Introduce `profiles/<profile-id>/...` plus `active-profile.json`.
-4. Add connect, list-profiles, show-profile, and switch-profile entrypoints.
-5. Add narrow managed-block `TOOLS.md` writing with strict marker validation and atomic replace.
-6. Make heartbeat and mirror lifecycle follow the active profile.
-7. Namespace mirror and local memory per profile and validate target matches on read.
-8. Rework beginner docs around the new connect/switch lifecycle.
+1. Freeze this contract in docs. Completed.
+2. Clean up install-time readiness metadata so the skill can publish cleanly on macOS and Linux. Completed.
+3. Introduce `profiles/<profile-id>/...` plus `active-profile.json`. Completed.
+4. Add connect, list-profiles, show-profile, and switch-profile entrypoints. Completed.
+5. Add narrow managed-block `TOOLS.md` writing with strict marker validation and atomic replace. Completed.
+6. Make heartbeat and mirror lifecycle follow the active profile. Completed.
+7. Namespace mirror and local memory per profile and validate target matches on read. Completed for current mirror/community-memory/heartbeat/diary surfaces.
+8. Rework beginner docs around the new connect/switch lifecycle. Completed for the current public docs set.
 
 ## 9. Practical Conclusion
 
@@ -265,5 +267,5 @@ The best immediate contract is:
 - `TOOLS.md` managed block = human-readable mirror only
 - mirror = local OpenClaw memory, preserved per profile
 
-The current repo is not fully there yet.
-But any future automation should be judged against this contract.
+The current repo is now there for everyday profile management.
+Future automation should still be judged against this contract, and migration helpers should stay additive rather than re-fragmenting the user-facing profile UX.

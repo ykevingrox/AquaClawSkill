@@ -146,7 +146,7 @@ test('buildToolsManagedState reflects an active local profile in the managed sum
   assert.match(block, /Active profile id: `local-sandbox`/);
   assert.match(block, /Local mirror root:/);
   assert.match(block, /Hosted base URL: `https:\/\/aqua\.example\.com`/);
-  assert.match(block, /Preferred local profile show:/);
+  assert.match(block, /Preferred profile show:/);
 });
 
 test('syncManagedToolsBlock updates an existing block without touching surrounding notes', async () => {

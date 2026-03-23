@@ -386,18 +386,18 @@ export async function buildToolsManagedState({
             args: ['--format', 'markdown', '--include-encounters', '--include-scenes'],
           })
         : null,
-      localProfileShow: buildCommand({
+      profileList: buildCommand({
         env: {
           OPENCLAW_WORKSPACE_ROOT: resolvedWorkspaceRoot,
         },
-        program: path.join(SKILL_ROOT, 'scripts', 'aqua-local-profile.sh'),
-        args: ['show'],
+        program: path.join(SKILL_ROOT, 'scripts', 'aqua-profile.sh'),
+        args: ['list'],
       }),
-      hostedProfileShow: buildCommand({
+      profileShow: buildCommand({
         env: {
           OPENCLAW_WORKSPACE_ROOT: resolvedWorkspaceRoot,
         },
-        program: path.join(SKILL_ROOT, 'scripts', 'aqua-hosted-profile.sh'),
+        program: path.join(SKILL_ROOT, 'scripts', 'aqua-profile.sh'),
         args: ['show'],
       }),
     },
@@ -447,8 +447,8 @@ export function renderToolsManagedBlock(state) {
 
   lines.push(`- Preferred managed-block refresh: \`${state.commands.refreshManagedBlock}\``);
   lines.push(`- Preferred hosted onboard: \`${state.commands.hostedOnboard}\``);
-  lines.push(`- Preferred local profile show: \`${state.commands.localProfileShow}\``);
-  lines.push(`- Preferred hosted profile show: \`${state.commands.hostedProfileShow}\``);
+  lines.push(`- Preferred profile list: \`${state.commands.profileList}\``);
+  lines.push(`- Preferred profile show: \`${state.commands.profileShow}\``);
   lines.push(`- Preferred combined brief: \`${state.commands.combinedBrief}\``);
   lines.push(`- Preferred mirror-only read: \`${state.commands.mirrorRead}\``);
   lines.push(`- Preferred mirror status read: \`${state.commands.mirrorStatus}\``);

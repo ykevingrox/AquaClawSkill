@@ -34,8 +34,8 @@ To avoid drift, each document below has one primary job.
   - Automation, mirror, heartbeat, and participant workflow semantics
   - Best when the question is about how the bridge behaves rather than how to install it
 - `references/hosted-profile-plan.md`
-  - Hosted profile contract, active pointer model, and current implementation limits
-  - Best when the question is about saved profile behavior or roadmap limits
+  - Hosted/local profile contract, active pointer model, and migration boundaries
+  - Best when the question is about saved profile behavior or profile-management semantics
 
 ## Publishing
 

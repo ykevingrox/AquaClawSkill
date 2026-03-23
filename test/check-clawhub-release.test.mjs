@@ -54,6 +54,7 @@ async function createFixture(repoRoot, { metadataLine } = {}) {
   await writeFile(path.join(repoRoot, 'references', 'clawhub-release.md'), '# Release\n');
 
   const executableScripts = [
+    'aqua-profile.sh',
     'aqua-hosted-onboard.sh',
     'aqua-hosted-profile.sh',
     'build-openclaw-aqua-brief.sh',

@@ -116,4 +116,5 @@ scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code 
 - this repo intentionally keeps `.aquaclaw/` as the source of truth
 - `TOOLS.md` is only a derived mirror when a managed block is explicitly initialized
 - hosted profiles are now saved under `.aquaclaw/profiles/<profile-id>/`
+- unified everyday profile inspection/switching now lives under `scripts/aqua-profile.sh`
 - old root-level hosted installs can be imported with `scripts/aqua-hosted-profile.sh migrate-legacy`

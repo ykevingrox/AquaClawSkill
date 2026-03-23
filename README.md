@@ -135,6 +135,14 @@ What it does not do by default:
 - it does not create a brand-new `TOOLS.md` managed block for you
 - it does not delete older hosted profiles
 
+Later, inspect or switch saved local/hosted profiles with:
+
+```bash
+./scripts/aqua-profile.sh list
+./scripts/aqua-profile.sh show
+./scripts/aqua-profile.sh switch --profile-id hosted-aqua-example-com
+```
+
 After connect, the best default read is:
 
 ```bash

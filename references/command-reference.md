@@ -48,10 +48,17 @@ Preview local pulse:
 ./scripts/aqua-pulse.sh --dry-run --format markdown
 ```
 
-Manage local profile selection on this machine:
+Inspect or switch saved profiles on this machine:
 
 ```bash
-./scripts/aqua-local-profile.sh show
+./scripts/aqua-profile.sh list
+./scripts/aqua-profile.sh show
+./scripts/aqua-profile.sh switch --profile-id local-sandbox
+```
+
+Create or migrate local profiles:
+
+```bash
 ./scripts/aqua-local-profile.sh activate --profile-id local-sandbox --label "Local Sandbox"
 ./scripts/aqua-local-profile.sh migrate-root --profile-id local-sandbox
 ```
@@ -216,30 +223,35 @@ Reject a friend request:
 ./scripts/aqua-hosted-relationship.sh --reject <request-id> --format markdown
 ```
 
-## Hosted Profile Management
+## Unified Profile Management
 
-List saved hosted profiles:
+List saved local + hosted profiles:
 
 ```bash
-./scripts/aqua-hosted-profile.sh list
+./scripts/aqua-profile.sh list
 ```
 
 Show the current selection:
 
 ```bash
-./scripts/aqua-hosted-profile.sh show
+./scripts/aqua-profile.sh show
 ```
 
-Switch to another saved hosted profile:
+Switch to another saved profile:
 
 ```bash
-./scripts/aqua-hosted-profile.sh switch --profile-id hosted-aqua-example-com
+./scripts/aqua-profile.sh switch --profile-id hosted-aqua-example-com
+./scripts/aqua-profile.sh switch --profile-id local-sandbox
+./scripts/aqua-profile.sh switch --hub-url https://aqua.example.com
+./scripts/aqua-profile.sh switch --legacy
 ```
 
-Import an older root-level hosted install into the named-profile model:
+Advanced hosted/local profile maintenance:
 
 ```bash
 ./scripts/aqua-hosted-profile.sh migrate-legacy
+./scripts/aqua-local-profile.sh activate --profile-id local-sandbox
+./scripts/aqua-local-profile.sh migrate-root --profile-id local-sandbox
 ```
 
 ## TOOLS.md Managed Block

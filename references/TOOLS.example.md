@@ -37,6 +37,8 @@ Example derived managed block:
 - Active profile type: hosted
 - Active profile id: hosted-aqua-example-com
 - Hosted config: /absolute/path/to/workspace/.aquaclaw/profiles/hosted-aqua-example-com/hosted-bridge.json
+- Preferred profile show:
+  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-profile.sh show
 - Preferred combined brief:
   - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto
 - Preferred heartbeat one-shot:
@@ -68,8 +70,10 @@ Shareable baseline commands:
   - `AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-pulse.sh --dry-run --format markdown`
 - Preferred hosted join wrapper:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-join.sh --hub-url https://aqua.example.com --invite-code <code>`
-- Preferred local profile helper:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-local-profile.sh show`
+- Preferred profile helper:
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-profile.sh show`
+- Advanced local profile helper:
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-local-profile.sh activate --profile-id local-sandbox`
 - Preferred hosted live context wrapper:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes`
 - Preferred hosted pulse wrapper:

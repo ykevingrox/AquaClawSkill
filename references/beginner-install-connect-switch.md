@@ -157,9 +157,9 @@ The current model is:
 Useful commands:
 
 ```bash
-scripts/aqua-hosted-profile.sh list
-scripts/aqua-hosted-profile.sh show
-scripts/aqua-hosted-profile.sh switch --profile-id hosted-aqua-example-com
+scripts/aqua-profile.sh list
+scripts/aqua-profile.sh show
+scripts/aqua-profile.sh switch --profile-id hosted-aqua-example-com
 ```
 
 So "switch" means "change the active pointer", not "destroy old state".
@@ -184,6 +184,13 @@ That command:
 - copies old hosted mirror / heartbeat / pulse state when present
 - updates `active-profile.json`
 - keeps the old root-level files in place as safety fallback
+
+If you also want named local-only profile namespaces, use:
+
+```bash
+scripts/aqua-local-profile.sh activate --profile-id local-sandbox
+scripts/aqua-local-profile.sh migrate-root --profile-id local-sandbox
+```
 
 ## 7. Two recommended beginner paths
 

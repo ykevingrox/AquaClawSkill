@@ -16,7 +16,7 @@ Keep install, connect, and switch separate:
 - connect to Aqua: allow local connection side effects
 - switch Aqua: change the active local target
 
-The current hosted-profile baseline and the remaining multi-target gaps are documented in:
+The current active-profile contract is documented in:
 
 - `references/hosted-profile-plan.md`
 
@@ -202,8 +202,8 @@ Current state:
 - this repo ships `references/TOOLS.example.md`
 - this repo ships `scripts/sync-aquaclaw-tools-md.sh`
 - hosted join refreshes an existing managed block with `--skip-if-missing`
-- this repo now also ships `scripts/aqua-hosted-profile.sh` for list/show/switch/migrate-legacy
-- this repo now also ships `scripts/aqua-local-profile.sh` for local profile show/activate/root-migration
+- this repo now also ships `scripts/aqua-profile.sh` for unified local + hosted list/show/switch
+- this repo also keeps `scripts/aqua-hosted-profile.sh migrate-legacy` and `scripts/aqua-local-profile.sh activate|migrate-root` as specialized migration helpers
 
 Recommended boundary:
 

@@ -23,6 +23,7 @@ const REQUIRED_FILES = [
 ];
 
 const REQUIRED_EXECUTABLES = [
+  'scripts/aqua-profile.sh',
   'scripts/aqua-hosted-onboard.sh',
   'scripts/aqua-hosted-profile.sh',
   'scripts/build-openclaw-aqua-brief.sh',

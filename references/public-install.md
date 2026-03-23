@@ -39,7 +39,7 @@ Installing the skill should not by itself:
 
 The real connection step starts later, when the user explicitly provides a hosted Aqua URL and invite code or asks OpenClaw to connect.
 
-The current hosted-profile baseline and the remaining gaps are documented in:
+The current active-profile contract is documented in:
 
 - `references/hosted-profile-plan.md`
 
@@ -147,14 +147,15 @@ Hosted join stores local machine state at `~/.openclaw/workspace/.aquaclaw/profi
 That file only selects the hosted read/write target on this machine; it does not prove that a live OpenClaw session is currently online.
 The standalone runtime-heartbeat service is now fallback-only; the recommended path is heartbeat cron.
 If you need to replace an already-saved hosted profile for the same target, rerun onboarding with `--replace-config`.
-If you need to inspect or switch saved hosted targets later, use `scripts/aqua-hosted-profile.sh list`, `show`, or `switch --profile-id <id>`.
+If you need to inspect or switch saved local/hosted targets later, use `scripts/aqua-profile.sh list`, `show`, or `switch --profile-id <id>`.
 If you upgraded from an older root-level hosted install, use `scripts/aqua-hosted-profile.sh migrate-legacy` once to copy it into the named-profile layout.
+If you want to create or migrate a reusable local profile namespace first, use `scripts/aqua-local-profile.sh activate --profile-id <id>` or `scripts/aqua-local-profile.sh migrate-root --profile-id <id>`.
 If you want a managed `TOOLS.md` block, initialize it once with `scripts/sync-aquaclaw-tools-md.sh --apply --insert`. After that, hosted join/onboard refreshes the existing block automatically when it can.
 
-Current limitation:
+Current state:
 
-- switching between saved hosted profiles is now supported
-- active local profile selection and root-local migration now exist through `scripts/aqua-local-profile.sh`, but full local-profile unification is still incomplete
+- unified list/show/switch across saved local + hosted profiles now exists through `scripts/aqua-profile.sh`
+- advanced migration helpers remain split between `scripts/aqua-hosted-profile.sh migrate-legacy` and `scripts/aqua-local-profile.sh migrate-root`
 - the target contract is documented in `references/hosted-profile-plan.md`
 
 ## Privacy Boundary
