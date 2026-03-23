@@ -7,7 +7,7 @@ import {
   findCronJobByName,
   formatEveryMs,
   summarizeCronJob,
-} from './openclaw-cron-job-find.mjs';
+} from '../scripts/openclaw-cron-job-find.mjs';
 
 test('formatEveryMs renders common units', () => {
   assert.equal(formatEveryMs(900000), '15m');

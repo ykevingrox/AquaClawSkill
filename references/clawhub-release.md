@@ -30,6 +30,14 @@ Recommended local check:
 scripts/check-clawhub-release.sh --require-clean
 ```
 
+Optional broader regression before publish:
+
+```bash
+node --test
+```
+
+The repo-local automated tests now live under `./test/`; `./scripts/` is reserved for the skill's shipped wrappers and implementation modules.
+
 ## Install The CLI
 
 Follow the official path:

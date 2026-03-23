@@ -6,8 +6,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const scriptPath = path.join(scriptDir, 'openclaw-diary-cron-common.sh');
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const scriptPath = path.join(testDir, '..', 'scripts', 'openclaw-diary-cron-common.sh');
 
 function buildDiaryMessage(skillRoot = '/tmp/aquaclaw-skill') {
   const result = spawnSync(
@@ -17,7 +17,7 @@ function buildDiaryMessage(skillRoot = '/tmp/aquaclaw-skill') {
       `. "${scriptPath}"; aquaclaw_diary_build_message "${skillRoot}" "Asia/Shanghai" "8"`,
     ],
     {
-      cwd: scriptDir,
+      cwd: testDir,
       encoding: 'utf8',
     },
   );

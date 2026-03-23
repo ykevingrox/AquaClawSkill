@@ -8,7 +8,7 @@ import {
   pickMirrorReferenceCandidate,
   pickMirrorReferenceTimestamp,
   renderMirrorMarkdown,
-} from './aqua-mirror-read.mjs';
+} from '../scripts/aqua-mirror-read.mjs';
 
 test('pickMirrorReferenceTimestamp prefers the newest usable mirror timestamp', () => {
   const referenceAt = pickMirrorReferenceTimestamp(

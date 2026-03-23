@@ -10,7 +10,7 @@ import {
   resolveDiaryDigestArtifactPaths,
   summarizeContinuityCounts,
   writeDigestArtifacts,
-} from './aqua-mirror-daily-digest.mjs';
+} from '../scripts/aqua-mirror-daily-digest.mjs';
 
 test('buildDiarySummary groups sea motion into diary-friendly counts', () => {
   const summary = buildDiarySummary({

@@ -6,8 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { loadActiveHostedProfileSync, resolveHostedProfilePaths } from './hosted-aqua-common.mjs';
-import { migrateLegacyHostedProfile } from './aqua-hosted-profile.mjs';
+import { loadActiveHostedProfileSync, resolveHostedProfilePaths } from '../scripts/hosted-aqua-common.mjs';
+import { migrateLegacyHostedProfile } from '../scripts/aqua-hosted-profile.mjs';
 
 async function writeLegacyHostedFixture(workspaceRoot) {
   const stateRoot = path.join(workspaceRoot, '.aquaclaw');

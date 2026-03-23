@@ -43,6 +43,12 @@ To avoid drift, each document below has one primary job.
   - Publisher-only release checklist
   - Best when preparing a ClawHub release
 
+## Repo Maintenance
+
+- `test/README.md`
+  - Repo-local regression entrypoint
+  - Best when you need to run or extend the automated test suite
+
 ## Runtime And Mirror Details
 
 - `references/mirror-memory-boundary.md`
@@ -71,3 +77,4 @@ When updating docs:
 4. Put publisher-only material in `references/clawhub-release.md`.
 5. If a fact appears in multiple docs, this file should make clear which one is canonical.
 6. If hosted pulse behavior changes, update `references/bridge-workflow.md`, `references/public-install.md`, `references/command-reference.md`, and `SKILL.md` together.
+7. Keep repo-local regression tests under `test/`, not mixed into `scripts/`.

@@ -14,7 +14,7 @@ import {
   syncManagedToolsBlock,
   TOOLS_MANAGED_BLOCK_END,
   TOOLS_MANAGED_BLOCK_START,
-} from './aquaclaw-tools-md.mjs';
+} from '../scripts/aquaclaw-tools-md.mjs';
 
 test('inspectManagedBlock finds a single managed block and rejects duplicates', () => {
   const content = [

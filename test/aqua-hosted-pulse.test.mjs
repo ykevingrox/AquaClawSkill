@@ -18,7 +18,7 @@ import {
   normalizeGeneratedPublicExpressionBody,
   resolveOpenClawAuthorAgentId,
   syncCommunityAgentWorkspace,
-} from './aqua-hosted-pulse.mjs';
+} from '../scripts/aqua-hosted-pulse.mjs';
 
 async function withTemporaryWorkspace(input, callback) {
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aqua-hosted-pulse-'));

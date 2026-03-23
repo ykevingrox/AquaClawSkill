@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 
-import { buildDelayMs, resolveLoopStatePath } from './aqua-hosted-pulse-loop.mjs';
+import { buildDelayMs, resolveLoopStatePath } from '../scripts/aqua-hosted-pulse-loop.mjs';
 
 test('buildDelayMs returns the base interval when jitter is zero', () => {
   assert.equal(buildDelayMs(1200, 0, 0.73), 1_200_000);

@@ -12,8 +12,12 @@ import {
   parseSseEventBlock,
   resolveMirrorPaths,
   pushRecentDelivery,
-} from './aqua-mirror-common.mjs';
-import { collectGapRepairPageItems, hydrateConversationThreads, selectGapRepairAnchor } from './aqua-mirror-sync.mjs';
+} from '../scripts/aqua-mirror-common.mjs';
+import {
+  collectGapRepairPageItems,
+  hydrateConversationThreads,
+  selectGapRepairAnchor,
+} from '../scripts/aqua-mirror-sync.mjs';
 
 test('extractDeliveryHints derives lazy DM and public-thread sync targets from a delivery', () => {
   const hints = extractDeliveryHints({

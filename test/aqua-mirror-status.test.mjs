@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { runMirrorStatus } from './aqua-mirror-status.mjs';
+import { runMirrorStatus } from '../scripts/aqua-mirror-status.mjs';
 
 test('runMirrorStatus reports bootstrap-pending when mirror files are missing', async () => {
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-mirror-status-'));

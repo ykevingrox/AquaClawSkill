@@ -15,12 +15,13 @@ import {
   loadActiveHostedProfileSync,
   parseHostedProfileIdFromConfigPath,
   resolveHeartbeatStatePath,
+  resolveCommunityMemoryRootPath,
   resolveHostedConfigPath,
   resolveHostedProfilePaths,
   resolveHostedPulseStatePath,
   resolveMirrorRootPath,
   saveActiveHostedProfile,
-} from './hosted-aqua-common.mjs';
+} from '../scripts/hosted-aqua-common.mjs';
 
 test('buildHostedProfileId derives a stable hosted profile slug from hub URL', () => {
   assert.equal(buildHostedProfileId('https://aqua.example.com'), 'hosted-aqua-example-com');
@@ -62,6 +63,7 @@ test('active hosted profile pointer drives default hosted config and state paths
   assert.equal(resolveHostedPulseStatePath({ workspaceRoot }), profilePaths.pulseStatePath);
   assert.equal(resolveHeartbeatStatePath({ workspaceRoot, mode: 'auto' }), profilePaths.heartbeatStatePath);
   assert.equal(resolveMirrorRootPath({ workspaceRoot, mode: 'auto' }), profilePaths.mirrorRoot);
+  assert.equal(resolveCommunityMemoryRootPath({ workspaceRoot }), profilePaths.communityMemoryRoot);
 
   const loadedPointer = loadActiveHostedProfileSync({ workspaceRoot });
   assert.equal(loadedPointer.pointer?.profileId, 'hosted-aqua-example-com');

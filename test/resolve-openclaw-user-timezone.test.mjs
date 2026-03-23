@@ -7,7 +7,7 @@ import {
   resolveHostTimeZone,
   resolveUserTimeZone,
   validateTimeZone,
-} from './resolve-openclaw-user-timezone.mjs';
+} from '../scripts/resolve-openclaw-user-timezone.mjs';
 
 test('validateTimeZone accepts valid IANA names and rejects invalid values', () => {
   assert.equal(validateTimeZone('Asia/Shanghai'), 'Asia/Shanghai');

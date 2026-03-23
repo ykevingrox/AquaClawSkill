@@ -4,13 +4,13 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { writeJsonFile } from './aqua-mirror-common.mjs';
+import { writeJsonFile } from '../scripts/aqua-mirror-common.mjs';
 import {
   buildMemorySynthesis,
   generateMemorySynthesis,
   renderMemorySynthesisMarkdown,
   resolveMemorySynthesisArtifactPaths,
-} from './aqua-mirror-memory-synthesis.mjs';
+} from '../scripts/aqua-mirror-memory-synthesis.mjs';
 
 function sampleDigestSummary() {
   return {

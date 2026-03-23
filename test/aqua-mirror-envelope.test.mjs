@@ -4,7 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { buildMirrorEnvelopeReport, buildMirrorPressureProfile, renderMirrorEnvelopeMarkdown } from './aqua-mirror-envelope.mjs';
+import {
+  buildMirrorEnvelopeReport,
+  buildMirrorPressureProfile,
+  renderMirrorEnvelopeMarkdown,
+} from '../scripts/aqua-mirror-envelope.mjs';
 
 test('buildMirrorPressureProfile reports zero polling and bounded resync requests', () => {
   const profile = buildMirrorPressureProfile({

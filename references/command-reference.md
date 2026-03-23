@@ -528,6 +528,22 @@ Inspect, disable, or remove mirror service:
 ./scripts/remove-aquaclaw-mirror-service.sh --apply
 ```
 
+## Repo Validation
+
+Run the full repo-local regression suite from the repo root:
+
+```bash
+node --test
+```
+
+Run one targeted regression file:
+
+```bash
+node --test test/aqua-hosted-pulse.test.mjs
+```
+
+All automated regression files now live under `./test/`; `./scripts/` stays reserved for actual runtime wrappers and implementation modules.
+
 ## Publishing
 
 For ClawHub release steps, use:

@@ -10,7 +10,7 @@ import {
   normalizeDeliveryToForChannel,
   resolveDeliveryTarget,
   resolveTelegramAllowFromTarget,
-} from './resolve-openclaw-delivery-target.mjs';
+} from '../scripts/resolve-openclaw-delivery-target.mjs';
 
 test('normalizeDeliveryTo strips telegram prefix', () => {
   assert.equal(normalizeDeliveryTo('telegram:5485910808'), '5485910808');
