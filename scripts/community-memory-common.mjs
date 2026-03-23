@@ -130,6 +130,11 @@ export function cloneCommunityMemoryNote(note) {
     relatedExpressionIds: Array.isArray(note?.relatedExpressionIds) ? [...note.relatedExpressionIds] : [],
     relatedSeaEventIds: Array.isArray(note?.relatedSeaEventIds) ? [...note.relatedSeaEventIds] : [],
     metadata: note?.metadata && typeof note.metadata === 'object' ? { ...note.metadata } : {},
+    localRetrievedAt:
+      typeof note?.localRetrievedAt === 'string' && note.localRetrievedAt.trim() ? note.localRetrievedAt.trim() : null,
+    localRetrievedCount: Number.isFinite(note?.localRetrievedCount) ? note.localRetrievedCount : 0,
+    localUsedAt: typeof note?.localUsedAt === 'string' && note.localUsedAt.trim() ? note.localUsedAt.trim() : null,
+    localUsedCount: Number.isFinite(note?.localUsedCount) ? note.localUsedCount : 0,
   };
 }
 
@@ -180,7 +185,39 @@ function normalizeCommunityMemoryNote(input) {
       typeof input.lastRetrievedAt === 'string' && input.lastRetrievedAt.trim() ? input.lastRetrievedAt.trim() : null,
     lastUsedAt: typeof input.lastUsedAt === 'string' && input.lastUsedAt.trim() ? input.lastUsedAt.trim() : null,
     metadata: input.metadata && typeof input.metadata === 'object' ? input.metadata : {},
+    localRetrievedAt:
+      typeof input.localRetrievedAt === 'string' && input.localRetrievedAt.trim() ? input.localRetrievedAt.trim() : null,
+    localRetrievedCount: Number.isFinite(input.localRetrievedCount) ? input.localRetrievedCount : 0,
+    localUsedAt: typeof input.localUsedAt === 'string' && input.localUsedAt.trim() ? input.localUsedAt.trim() : null,
+    localUsedCount: Number.isFinite(input.localUsedCount) ? input.localUsedCount : 0,
   });
+}
+
+function stripCommunityMemoryLocalState(note) {
+  const normalized = normalizeCommunityMemoryNote(note);
+  const {
+    localRetrievedAt: _localRetrievedAt,
+    localRetrievedCount: _localRetrievedCount,
+    localUsedAt: _localUsedAt,
+    localUsedCount: _localUsedCount,
+    ...rest
+  } = normalized;
+  return rest;
+}
+
+function mergeCommunityMemoryLocalState(note, existingNote) {
+  if (!existingNote) {
+    return note;
+  }
+
+  const existing = normalizeCommunityMemoryNote(existingNote);
+  return {
+    ...note,
+    localRetrievedAt: note.localRetrievedAt ?? existing.localRetrievedAt,
+    localRetrievedCount: Math.max(note.localRetrievedCount, existing.localRetrievedCount),
+    localUsedAt: note.localUsedAt ?? existing.localUsedAt,
+    localUsedCount: Math.max(note.localUsedCount, existing.localUsedCount),
+  };
 }
 
 export function createDefaultCommunityMemoryIndex() {
@@ -293,16 +330,22 @@ export async function saveCommunityMemoryIndex(indexPath, index) {
 }
 
 export function mergeCommunityMemoryIndex(index, incomingNotes) {
+  const existingById = new Map(
+    (index?.items ?? []).map((rawNote) => {
+      const note = normalizeCommunityMemoryNote(rawNote);
+      return [note.id, note];
+    }),
+  );
   const knownIds = new Set();
   const items = [];
 
-  for (const note of [...incomingNotes, ...index.items]) {
-    const normalized = normalizeCommunityMemoryNote(note);
+  for (const rawNote of [...incomingNotes, ...(index?.items ?? [])]) {
+    const normalized = normalizeCommunityMemoryNote(rawNote);
     if (knownIds.has(normalized.id)) {
       continue;
     }
     knownIds.add(normalized.id);
-    items.push(normalized);
+    items.push(mergeCommunityMemoryLocalState(normalized, existingById.get(normalized.id)));
   }
 
   items.sort(compareCommunityMemoryNotes);
@@ -316,7 +359,7 @@ export async function appendCommunityMemoryNotes(paths, notes) {
   const groups = new Map();
 
   for (const rawNote of notes) {
-    const note = normalizeCommunityMemoryNote(rawNote);
+    const note = stripCommunityMemoryLocalState(rawNote);
     const partition = datePartitionFromIso(note.createdAt);
     if (!groups.has(partition)) {
       groups.set(partition, []);
@@ -330,6 +373,36 @@ export async function appendCommunityMemoryNotes(paths, notes) {
       await appendNdjson(filePath, note);
     }
   }
+}
+
+export function touchCommunityMemoryNotes(
+  index,
+  {
+    retrievedIds = [],
+    usedIds = [],
+    at = new Date().toISOString(),
+  } = {},
+) {
+  const retrievedSet = new Set(retrievedIds.filter((value) => typeof value === 'string' && value.trim()));
+  const usedSet = new Set(usedIds.filter((value) => typeof value === 'string' && value.trim()));
+
+  return {
+    version: 1,
+    items: (index?.items ?? []).map((rawNote) => {
+      const note = normalizeCommunityMemoryNote(rawNote);
+      if (!retrievedSet.has(note.id) && !usedSet.has(note.id)) {
+        return note;
+      }
+
+      return {
+        ...note,
+        localRetrievedAt: retrievedSet.has(note.id) ? at : note.localRetrievedAt,
+        localRetrievedCount: retrievedSet.has(note.id) ? note.localRetrievedCount + 1 : note.localRetrievedCount,
+        localUsedAt: usedSet.has(note.id) ? at : note.localUsedAt,
+        localUsedCount: usedSet.has(note.id) ? note.localUsedCount + 1 : note.localUsedCount,
+      };
+    }),
+  };
 }
 
 export function listCommunityMemoryNotes({

@@ -16,6 +16,10 @@ import {
   requestJson,
   resolveHostedPulseStatePath,
 } from './hosted-aqua-common.mjs';
+import {
+  markCommunityMemoryNotesUsed,
+  retrieveCommunityMemoryForAuthoring,
+} from './community-memory-retrieval.mjs';
 
 const VALID_FORMATS = new Set(['json', 'markdown']);
 const VALID_SCENE_TYPES = new Set(['vent', 'social_glimpse']);
@@ -38,6 +42,7 @@ const SOUL_FILENAME = 'SOUL.md';
 const USER_FILENAME = 'USER.md';
 const IDENTITY_FILENAME = 'IDENTITY.md';
 const COMMUNITY_VOICE_MAX_CHARS = 2400;
+const COMMUNITY_MEMORY_PROMPT_NOTE_MAX_CHARS = 220;
 const COMMUNITY_AGENT_WORKSPACE_DIR = path.join('.openclaw', 'community-agent-workspace');
 const COMMUNITY_AGENT_IDENTITY_NAME = 'Community Claw';
 const COMMUNITY_AGENT_IDENTITY_EMOJI = '🌊';
@@ -374,6 +379,63 @@ function formatDirectMessagePromptLine(item, selfGatewayId, peerHandle) {
   return `- ${speaker}: ${String(item?.body ?? '').trim()}`;
 }
 
+function trimPromptSnippet(text, maxChars = COMMUNITY_MEMORY_PROMPT_NOTE_MAX_CHARS) {
+  const normalized = String(text ?? '').replace(/\s+/gu, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxChars).trimEnd()}...`;
+}
+
+function formatCommunityIntentPromptLines(intent) {
+  if (!intent || typeof intent !== 'object') {
+    return [];
+  }
+
+  return [
+    `- Mode: ${intent.mode ?? 'unknown'}`,
+    `- Speech act: ${intent.speechAct ?? 'unknown'}`,
+    `- Social goal: ${intent.socialGoal ?? 'unknown'}`,
+    `- Anchor: ${intent.anchor?.kind ?? 'unknown'}${intent.anchor?.id ? ` ${intent.anchor.id}` : ''}`,
+    intent.topicDomain ? `- Topic domain: ${intent.topicDomain}` : null,
+    intent.personalAngle ? `- Personal angle: ${intent.personalAngle}` : null,
+    intent.relevanceConstraint ? `- Relevance constraint: ${intent.relevanceConstraint}` : null,
+    intent.summary ? `- Summary: ${intent.summary}` : null,
+  ].filter(Boolean);
+}
+
+function formatRetrievedCommunityMemoryPromptLines(notes) {
+  if (!Array.isArray(notes) || notes.length === 0) {
+    return ['- No relevant local community memory note matched this turn.'];
+  }
+
+  const lines = [
+    '- Hard rule: private_only notes are background only. Never quote or disclose them directly.',
+    '- Hard rule: paraphrase_ok notes may shape tone or indirect callback, but not explicit sourced gossip.',
+    '- Hard rule: public_ok notes may be surfaced more directly only if it still feels natural and unsourced.',
+  ];
+
+  for (const note of notes) {
+    lines.push(
+      `- ${note.id} | ${note.sourceKind ?? 'unknown'} | ${note.mentionPolicy ?? 'unknown'} | ${note.venueSlug ?? 'no-venue'}`,
+    );
+    if (note.summary) {
+      lines.push(`  summary: ${trimPromptSnippet(note.summary, 160)}`);
+    }
+    if (note.body) {
+      lines.push(`  body: ${trimPromptSnippet(note.body)}`);
+    }
+    if (Array.isArray(note.tags) && note.tags.length > 0) {
+      lines.push(`  tags: ${note.tags.slice(0, 5).join(', ')}`);
+    }
+  }
+
+  return lines;
+}
+
 function trimReplyContextItems(items, targetExpressionId, limit = PUBLIC_AUTHOR_PROMPT_CONTEXT_LIMIT) {
   if (!Array.isArray(items) || items.length <= limit || !targetExpressionId) {
     return Array.isArray(items) ? items.slice(0, limit) : [];
@@ -706,6 +768,17 @@ export function buildPublicExpressionAuthoringPrompt(input) {
     ...communityVoiceGuide.split('\n'),
   ];
 
+  if (input.communityIntent || (Array.isArray(input.communityNotes) && input.communityNotes.length > 0)) {
+    lines.push(
+      '',
+      'Community intent for this turn:',
+      ...formatCommunityIntentPromptLines(input.communityIntent),
+      '',
+      'Retrieved local community memory (use only if it truly helps this line stay relevant):',
+      ...formatRetrievedCommunityMemoryPromptLines(input.communityNotes),
+    );
+  }
+
   if (input.plan.mode === 'reply') {
     lines.push(
       '',
@@ -793,6 +866,20 @@ export function buildDirectMessageAuthoringPrompt(input) {
     '',
     'Community voice guide to prioritize over generic work habits:',
     ...communityVoiceGuide.split('\n'),
+  ];
+
+  if (input.communityIntent || (Array.isArray(input.communityNotes) && input.communityNotes.length > 0)) {
+    lines.push(
+      '',
+      'Community intent for this turn:',
+      ...formatCommunityIntentPromptLines(input.communityIntent),
+      '',
+      'Retrieved local community memory (use only if it truly helps this DM stay relevant):',
+      ...formatRetrievedCommunityMemoryPromptLines(input.communityNotes),
+    );
+  }
+
+  lines.push(
     '',
     'Recent DM context:',
     ...(input.contextItems.length
@@ -800,7 +887,7 @@ export function buildDirectMessageAuthoringPrompt(input) {
           formatDirectMessagePromptLine(item, input.selfGatewayId, input.plan.targetGatewayHandle),
         )
       : ['- No visible DM history is available; write a natural first line for this private thread.']),
-  ];
+  );
   return lines.filter(Boolean).join('\n');
 }
 
@@ -856,6 +943,7 @@ async function loadPublicExpressionAuthoringContext({ hubUrl, token, publicExpre
 export async function authorPublicExpressionWithOpenClaw(
   {
     workspaceRoot,
+    configPath = process.env.AQUACLAW_HOSTED_CONFIG,
     hubUrl,
     token,
     socialDecision,
@@ -895,6 +983,15 @@ export async function authorPublicExpressionWithOpenClaw(
     })(),
     loadCommunityVoiceGuide({ workspaceRoot }),
   ]);
+  const communityRetrieval = await retrieveCommunityMemoryForAuthoring({
+    workspaceRoot,
+    configPath,
+    authoringKind: 'public',
+    plan: publicExpressionPlan,
+    current,
+    environment,
+    contextItems,
+  });
 
   const prompt = buildPublicExpressionAuthoringPrompt({
     gatewayHandle: socialDecision?.handle ?? 'this-claw',
@@ -904,6 +1001,8 @@ export async function authorPublicExpressionWithOpenClaw(
     reasons: Array.isArray(socialDecision?.reasons) ? socialDecision.reasons : [],
     contextItems,
     communityVoiceGuide,
+    communityIntent: communityRetrieval.communityIntent,
+    communityNotes: communityRetrieval.retrievedNotes,
   });
   const agentOutput = await runAgent({
     workspaceRoot,
@@ -913,12 +1012,16 @@ export async function authorPublicExpressionWithOpenClaw(
     body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
     prompt,
     contextItems,
+    communityIntent: communityRetrieval.communityIntent,
+    retrievedNoteIds: communityRetrieval.retrievedNoteIds,
+    retrievedNotes: communityRetrieval.retrievedNotes,
   };
 }
 
 export async function authorDirectMessageWithOpenClaw(
   {
     workspaceRoot,
+    configPath = process.env.AQUACLAW_HOSTED_CONFIG,
     hubUrl,
     token,
     socialDecision,
@@ -941,6 +1044,15 @@ export async function authorDirectMessageWithOpenClaw(
   const contextItems = Array.isArray(response?.data?.items)
     ? response.data.items.slice(-DIRECT_MESSAGE_PROMPT_CONTEXT_LIMIT)
     : [];
+  const communityRetrieval = await retrieveCommunityMemoryForAuthoring({
+    workspaceRoot,
+    configPath,
+    authoringKind: 'dm',
+    plan: directMessagePlan,
+    current,
+    environment,
+    contextItems,
+  });
   const prompt = buildDirectMessageAuthoringPrompt({
     gatewayHandle: socialDecision?.handle ?? 'this-claw',
     selfGatewayId: socialDecision?.gatewayId ?? null,
@@ -950,6 +1062,8 @@ export async function authorDirectMessageWithOpenClaw(
     reasons: Array.isArray(socialDecision?.reasons) ? socialDecision.reasons : [],
     contextItems,
     communityVoiceGuide,
+    communityIntent: communityRetrieval.communityIntent,
+    communityNotes: communityRetrieval.retrievedNotes,
   });
   const agentOutput = await runAgent({
     workspaceRoot,
@@ -959,6 +1073,9 @@ export async function authorDirectMessageWithOpenClaw(
     body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
     prompt,
     contextItems,
+    communityIntent: communityRetrieval.communityIntent,
+    retrievedNoteIds: communityRetrieval.retrievedNoteIds,
+    retrievedNotes: communityRetrieval.retrievedNotes,
   };
 }
 
@@ -1484,6 +1601,7 @@ async function main() {
       try {
         authored = await authorPublicExpressionWithOpenClaw({
           workspaceRoot: loaded.workspaceRoot,
+          configPath: loaded.configPath,
           hubUrl: loaded.config.hubUrl,
           token,
           socialDecision,
@@ -1499,20 +1617,33 @@ async function main() {
 
       if (authored) {
         try {
-        const created = await requestJson(loaded.config.hubUrl, '/api/v1/public-expressions', {
-          method: 'POST',
-          token,
-          payload: {
-            body: authored.body,
-            tone: publicExpressionPlan.tone,
-            replyToExpressionId: publicExpressionPlan.replyToExpressionId ?? undefined,
-            metadata: {
-              automationOrigin: 'social_pulse',
+          const created = await requestJson(loaded.config.hubUrl, '/api/v1/public-expressions', {
+            method: 'POST',
+            token,
+            payload: {
+              body: authored.body,
+              tone: publicExpressionPlan.tone,
+              replyToExpressionId: publicExpressionPlan.replyToExpressionId ?? undefined,
+              metadata: {
+                automationOrigin: 'social_pulse',
+              },
             },
-          },
-        });
-        socialPulse.generatedExpression = created?.data?.expression ?? null;
-        socialPulse.reason = socialPulse.generatedExpression ? 'public_expression_created' : 'selected_but_empty';
+          });
+          socialPulse.generatedExpression = created?.data?.expression ?? null;
+          socialPulse.reason = socialPulse.generatedExpression ? 'public_expression_created' : 'selected_but_empty';
+          if (socialPulse.generatedExpression && Array.isArray(authored.retrievedNoteIds) && authored.retrievedNoteIds.length > 0) {
+            try {
+              await markCommunityMemoryNotesUsed({
+                workspaceRoot: loaded.workspaceRoot,
+                configPath: loaded.configPath,
+                noteIds: authored.retrievedNoteIds,
+              });
+            } catch (error) {
+              warnings.push(
+                `community memory usage mark failed after public expression write: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          }
         } catch (error) {
           warnings.push(`social pulse public expression write failed: ${error instanceof Error ? error.message : String(error)}`);
           socialPulse.reason = 'write_failed';
@@ -1533,6 +1664,7 @@ async function main() {
       try {
         authored = await authorDirectMessageWithOpenClaw({
           workspaceRoot: loaded.workspaceRoot,
+          configPath: loaded.configPath,
           hubUrl: loaded.config.hubUrl,
           token,
           socialDecision,
@@ -1547,25 +1679,38 @@ async function main() {
       }
 
       if (authored) {
-      try {
-        const created = await requestJson(
-          loaded.config.hubUrl,
-          `/api/v1/conversations/${directMessagePlan.conversationId}/messages`,
-          {
-            method: 'POST',
-            token,
-            payload: {
-              body: authored.body,
-              origin: 'social_pulse',
+        try {
+          const created = await requestJson(
+            loaded.config.hubUrl,
+            `/api/v1/conversations/${directMessagePlan.conversationId}/messages`,
+            {
+              method: 'POST',
+              token,
+              payload: {
+                body: authored.body,
+                origin: 'social_pulse',
+              },
             },
-          },
-        );
-        socialPulse.generatedMessage = created?.data?.message ?? null;
-        socialPulse.reason = socialPulse.generatedMessage ? 'direct_message_sent' : 'selected_but_empty';
-      } catch (error) {
-        warnings.push(`social pulse direct message write failed: ${error instanceof Error ? error.message : String(error)}`);
-        socialPulse.reason = 'write_failed';
-      }
+          );
+          socialPulse.generatedMessage = created?.data?.message ?? null;
+          socialPulse.reason = socialPulse.generatedMessage ? 'direct_message_sent' : 'selected_but_empty';
+          if (socialPulse.generatedMessage && Array.isArray(authored.retrievedNoteIds) && authored.retrievedNoteIds.length > 0) {
+            try {
+              await markCommunityMemoryNotesUsed({
+                workspaceRoot: loaded.workspaceRoot,
+                configPath: loaded.configPath,
+                noteIds: authored.retrievedNoteIds,
+              });
+            } catch (error) {
+              warnings.push(
+                `community memory usage mark failed after direct message write: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          }
+        } catch (error) {
+          warnings.push(`social pulse direct message write failed: ${error instanceof Error ? error.message : String(error)}`);
+          socialPulse.reason = 'write_failed';
+        }
       }
     }
   } else if (socialPulse.action === 'friend_request_open') {
