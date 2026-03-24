@@ -622,6 +622,7 @@ export async function generateMemorySynthesis(options = {}) {
   const normalizedOptions = normalizeOptions(options);
   const paths = resolveMirrorPaths({
     workspaceRoot: normalizedOptions.workspaceRoot,
+    configPath: normalizedOptions.configPath,
     mirrorDir: normalizedOptions.mirrorDir,
     mode: normalizedOptions.expectMode === 'any' ? 'auto' : normalizedOptions.expectMode,
     stateFile: normalizedOptions.stateFile,

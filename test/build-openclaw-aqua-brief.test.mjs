@@ -8,6 +8,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { writeJsonFile } from '../scripts/aqua-mirror-common.mjs';
 import { syncCommunityMemory } from '../scripts/community-memory-sync.mjs';
 import { resolveHostedProfilePaths, saveActiveHostedProfile } from '../scripts/hosted-aqua-common.mjs';
 
@@ -173,6 +174,148 @@ function buildNote({
   };
 }
 
+function buildLifeLoopDailyIntent(targetDate) {
+  return {
+    generatedAt: `${targetDate}T10:06:00.000Z`,
+    targetDate,
+    timeZone: 'Asia/Shanghai',
+    mode: 'hosted',
+    dominantModes: [
+      {
+        mode: 'public',
+        score: 4,
+        summary: 'Public motion still has enough live charge for selective replies.',
+      },
+    ],
+    topicHooks: [
+      {
+        id: 'topic-public-1',
+        lane: 'public_reply',
+        summary: 'A public thread still reads as answerable.',
+      },
+    ],
+    relationshipHooks: [],
+    openLoops: [
+      {
+        id: 'open-public-1',
+        lane: 'public_reply',
+        targetHandle: '@reef-cartographer',
+        summary: 'A public thread still looks open.',
+      },
+    ],
+    avoidance: [],
+    energyProfile: {
+      level: 'steady',
+      posture: 'mixed',
+      summary: 'Public and private hooks are both alive enough for selective action.',
+    },
+    sourceRefs: [],
+  };
+}
+
+function buildLifeLoopWriteBack(recordedDate) {
+  return {
+    version: 1,
+    id: 'writeback-1',
+    recordedAt: `${recordedDate}T10:07:00.000Z`,
+    recordedDate,
+    origin: 'hosted_pulse',
+    lane: 'public_expression',
+    profileId: 'hosted-aqua-example-com',
+    output: {
+      kind: 'public_expression',
+      actionId: 'expr-created',
+      createdAt: `${recordedDate}T10:07:00.000Z`,
+      mode: 'reply',
+      tone: 'playful',
+      bodyPreview: 'I am still tracing that bend here too.',
+      targetGatewayHandle: '@reef-cartographer',
+      targetGatewayId: 'gateway-beta',
+    },
+    dailyIntent: {
+      targetDate: recordedDate,
+      sourceStatus: 'existing-artifact',
+      energyProfile: {
+        level: 'steady',
+        posture: 'mixed',
+        summary: 'Public and private hooks are both alive enough for selective action.',
+      },
+      dominantModes: [
+        {
+          mode: 'public',
+          score: 4,
+        },
+      ],
+      topicHookIds: ['topic-public-1'],
+      relationshipHookIds: [],
+      addressedOpenLoopIds: ['open-public-1'],
+      resolvedOpenLoopIds: ['open-public-1'],
+      continuedOpenLoopIds: [],
+      openLoopOutcomes: [],
+      newUnresolvedHooks: [
+        {
+          id: 'generated-public-1',
+          kind: 'public_thread_callback',
+          targetHandle: '@reef-cartographer',
+          summary: 'This new public reply may keep the thread with @reef-cartographer open.',
+        },
+      ],
+      avoidanceIds: [],
+      sourceRefIds: ['src-visible', 'src-private-note'],
+      sourceRefs: [
+        {
+          id: 'src-visible',
+          layer: 'visible',
+          kind: 'public_continuity',
+          createdAt: `${recordedDate}T09:55:00.000Z`,
+          summary: 'Public thread continuity around @reef-cartographer.',
+          exposure: 'public',
+          mentionPolicy: null,
+          targetHandle: '@reef-cartographer',
+        },
+        {
+          id: 'src-private-note',
+          layer: 'private_community',
+          kind: 'community_note',
+          createdAt: `${recordedDate}T09:50:00.000Z`,
+          summary: '这句 private source summary 不该出现在组合 brief 里。',
+          exposure: 'private_only',
+          mentionPolicy: 'private_only',
+          targetHandle: null,
+        },
+      ],
+    },
+    communityMemory: {
+      intentMode: 'reply',
+      socialGoal: 'answer_target',
+      retrievedNoteIds: ['note-visible', 'note-private'],
+      usedNoteIds: ['note-visible', 'note-private'],
+      notes: [
+        {
+          id: 'note-visible',
+          sourceKind: 'shop_whisper',
+          venueSlug: 'krusty-krab',
+          mentionPolicy: 'paraphrase_ok',
+          effectiveExposure: 'paraphrase_only',
+          freshnessScore: 0.8,
+          used: true,
+          summary: '贝贝说今天这波热闹不是自然涨起来的。',
+        },
+        {
+          id: 'note-private',
+          sourceKind: 'shop_whisper',
+          venueSlug: 'shellbucks',
+          mentionPolicy: 'private_only',
+          effectiveExposure: 'kept_private',
+          freshnessScore: 0.8,
+          used: true,
+          summary: '这句 private note summary 不该出现在组合 brief 里。',
+        },
+      ],
+    },
+  };
+}
+
 async function createWorkspaceFixture() {
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-brief-'));
   const profilePaths = resolveHostedProfilePaths({
@@ -244,6 +387,14 @@ async function createWorkspaceFixture() {
     },
   });
 
+  const lifeLoopDailyIntentRoot = path.join(profilePaths.profileRoot, 'life-loop', 'daily-intent');
+  const lifeLoopWriteBackRoot = path.join(profilePaths.profileRoot, 'life-loop', 'writeback');
+  await mkdir(lifeLoopDailyIntentRoot, { recursive: true });
+  await mkdir(lifeLoopWriteBackRoot, { recursive: true });
+  await writeJsonFile(path.join(lifeLoopDailyIntentRoot, '2026-03-23.json'), buildLifeLoopDailyIntent('2026-03-23'));
+  await writeFile(path.join(lifeLoopDailyIntentRoot, '2026-03-23.md'), '# life-loop\n', 'utf8');
+  await writeJsonFile(path.join(lifeLoopWriteBackRoot, 'latest.json'), buildLifeLoopWriteBack('2026-03-23'));
+
   return {
     workspaceRoot,
   };
@@ -280,4 +431,21 @@ test('build-openclaw-aqua-brief keeps community memory out by default and adds a
   assert.doesNotMatch(withCommunityMemory, /visible body should stay out/);
   assert.doesNotMatch(withCommunityMemory, /这句 private summary 不该出现在组合 brief 里。/);
   assert.doesNotMatch(withCommunityMemory, /private body must stay hidden in combined brief/);
+});
+
+test('build-openclaw-aqua-brief keeps life-loop out by default and adds a compact section only when requested', async () => {
+  const { workspaceRoot } = await createWorkspaceFixture();
+
+  const defaultOutput = runBrief(workspaceRoot);
+  assert.doesNotMatch(defaultOutput, /## Life Loop/);
+
+  const withLifeLoop = runBrief(workspaceRoot, ['--include-life-loop']);
+  assert.match(withLifeLoop, /- Include life loop: yes/);
+  assert.match(withLifeLoop, /## Life Loop/);
+  assert.match(withLifeLoop, /public \(score 4\)/);
+  assert.match(withLifeLoop, /贝贝说今天这波热闹不是自然涨起来的。/);
+  assert.match(withLifeLoop, /\(private-only note retained locally\)/);
+  assert.match(withLifeLoop, /\(private-only source retained locally\)/);
+  assert.doesNotMatch(withLifeLoop, /这句 private note summary 不该出现在组合 brief 里。/);
+  assert.doesNotMatch(withLifeLoop, /这句 private source summary 不该出现在组合 brief 里。/);
 });

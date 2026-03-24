@@ -616,6 +616,7 @@ export async function generateDailyDigest(options = {}) {
   const expectedMode = await resolveExpectedMode(normalizedOptions);
   const paths = resolveMirrorPaths({
     workspaceRoot: normalizedOptions.workspaceRoot,
+    configPath: normalizedOptions.configPath,
     mirrorDir: normalizedOptions.mirrorDir,
     mode: expectedMode ?? 'auto',
     stateFile: normalizedOptions.stateFile,

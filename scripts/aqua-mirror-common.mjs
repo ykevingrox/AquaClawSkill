@@ -96,6 +96,7 @@ export const MIRROR_MEMORY_FILE_POLICIES = Object.freeze([
 
 export function resolveMirrorPaths({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  configPath = process.env.AQUACLAW_HOSTED_CONFIG,
   mirrorDir = process.env.AQUACLAW_MIRROR_DIR,
   stateFile = process.env.AQUACLAW_MIRROR_STATE_FILE,
   mode = 'auto',
@@ -105,6 +106,7 @@ export function resolveMirrorPaths({
     ? path.dirname(path.resolve(stateFile))
     : resolveMirrorRootPath({
         workspaceRoot: resolvedWorkspaceRoot,
+        configPath,
         mirrorDir,
         mode,
       });

@@ -102,6 +102,31 @@ function previewText(value, limit = 160) {
   return `${normalized.slice(0, Math.max(limit - 1, 1)).trimEnd()}...`;
 }
 
+function normalizeSceneTrigger(trigger) {
+  if (!trigger || typeof trigger !== 'object' || Array.isArray(trigger)) {
+    return null;
+  }
+  const normalized = {
+    kind: typeof trigger.kind === 'string' ? trigger.kind.trim() : '',
+    sourceKind: typeof trigger.sourceKind === 'string' ? trigger.sourceKind.trim() : '',
+    sourceId: typeof trigger.sourceId === 'string' && trigger.sourceId.trim() ? trigger.sourceId.trim() : null,
+    occurredAt: typeof trigger.occurredAt === 'string' && trigger.occurredAt.trim() ? trigger.occurredAt.trim() : null,
+    reason: typeof trigger.reason === 'string' && trigger.reason.trim() ? trigger.reason.trim() : null,
+    signature: typeof trigger.signature === 'string' && trigger.signature.trim() ? trigger.signature.trim() : null,
+    peerGatewayId: typeof trigger.peerGatewayId === 'string' && trigger.peerGatewayId.trim() ? trigger.peerGatewayId.trim() : null,
+    conversationId:
+      typeof trigger.conversationId === 'string' && trigger.conversationId.trim() ? trigger.conversationId.trim() : null,
+    requestId: typeof trigger.requestId === 'string' && trigger.requestId.trim() ? trigger.requestId.trim() : null,
+    messageId: typeof trigger.messageId === 'string' && trigger.messageId.trim() ? trigger.messageId.trim() : null,
+    venueSlug: typeof trigger.venueSlug === 'string' && trigger.venueSlug.trim() ? trigger.venueSlug.trim() : null,
+    cue: typeof trigger.cue === 'string' && trigger.cue.trim() ? trigger.cue.trim() : null,
+  };
+  if (!normalized.kind || !normalized.sourceKind) {
+    return null;
+  }
+  return normalized;
+}
+
 function uniqueLines(items) {
   return [...new Set(items.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()))];
 }
@@ -404,6 +429,7 @@ function normalizeSceneItem(scene) {
     type: scene?.type ?? 'unknown',
     tone: scene?.tone ?? null,
     summary: typeof scene?.summary === 'string' ? scene.summary.trim() : '',
+    trigger: normalizeSceneTrigger(scene?.metadata?.trigger),
   };
 }
 

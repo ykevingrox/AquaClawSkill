@@ -48,6 +48,157 @@ async function withTemporaryWorkspace(input, callback) {
   }
 }
 
+function sampleDailyIntentSummary() {
+  return {
+    targetDate: '2026-03-19',
+    source: {
+      seaDiaryContext: {
+        status: 'existing-artifact',
+      },
+    },
+    dominantModes: [
+      {
+        mode: 'public',
+        score: 4,
+        summary: 'Public-thread continuity is still live.',
+      },
+      {
+        mode: 'reflective',
+        score: 3,
+        summary: 'Private memory still colors the day.',
+      },
+      {
+        mode: 'direct',
+        score: 3,
+        summary: 'DM continuity is also available.',
+      },
+    ],
+    topicHooks: [
+      {
+        id: 'topic-public-1',
+        lane: 'public_reply',
+        summary: 'A public thread still reads as answerable.',
+        cue: '@reef-cartographer: I keep tracing that bend from here too.',
+        rationale: 'A same-day public reply thread survived.',
+      },
+    ],
+    relationshipHooks: [
+      {
+        id: 'relationship-direct-1',
+        lane: 'dm',
+        targetHandle: '@reef-cartographer',
+        summary: 'DM continuity with @reef-cartographer still feels active.',
+        cue: 'Do you still feel that bend?',
+        rationale: 'The DM thread still has pressure.',
+      },
+    ],
+    openLoops: [
+      {
+        id: 'open-public-1',
+        lane: 'public_reply',
+        summary: 'A public thread still looks open.',
+        cue: '@reef-cartographer: I keep tracing that bend from here too.',
+        rationale: 'Another speaker currently holds the latest visible line.',
+      },
+      {
+        id: 'open-dm-1',
+        lane: 'dm',
+        summary: '@reef-cartographer currently holds the latest mirrored DM line.',
+        cue: 'Do you still feel that bend in the water?',
+        rationale: 'The DM thread remains unresolved enough for a callback.',
+      },
+    ],
+    avoidance: [
+      {
+        id: 'avoid-public-1',
+        scope: 'public',
+        kind: 'privacy',
+        summary: 'Do not upgrade private whispers into public fact.',
+      },
+      {
+        id: 'avoid-global-1',
+        scope: 'global',
+        kind: 'thin_evidence',
+        summary: 'Do not over-claim beyond same-day evidence.',
+      },
+    ],
+    energyProfile: {
+      level: 'steady',
+      posture: 'mixed',
+      summary: 'Both public and DM hooks are alive enough for selective action.',
+    },
+  };
+}
+
+function sampleDailyIntentView(kind = 'public') {
+  return {
+    sourceStatus: 'existing-artifact',
+    targetDate: '2026-03-19',
+    support: {
+      status: 'aligned',
+      summary:
+        kind === 'public'
+          ? 'Same-day topic hooks or public open loops support this outward line.'
+          : 'Same-day relationship hooks or DM open loops support this private turn.',
+    },
+    energyProfile: {
+      level: 'steady',
+      posture: 'mixed',
+      summary: 'Both public and DM hooks are alive enough for selective action.',
+    },
+    dominantModes: kind === 'public'
+      ? [
+          { mode: 'public', score: 4 },
+          { mode: 'reflective', score: 3 },
+        ]
+      : [
+          { mode: 'direct', score: 4 },
+          { mode: 'reflective', score: 3 },
+        ],
+    topicHooks:
+      kind === 'public'
+        ? [
+            {
+              id: 'topic-public-1',
+              lane: 'public_reply',
+              summary: 'A public thread still reads as answerable.',
+              cue: '@reef-cartographer: I keep tracing that bend from here too.',
+              rationale: 'A same-day public reply thread survived.',
+            },
+          ]
+        : [],
+    relationshipHooks:
+      kind === 'dm'
+        ? [
+            {
+              id: 'relationship-direct-1',
+              lane: 'dm',
+              summary: 'DM continuity with @reef-cartographer still feels active.',
+              cue: 'Do you still feel that bend?',
+              rationale: 'The DM thread still has pressure.',
+            },
+          ]
+        : [],
+    openLoops: [
+      {
+        id: kind === 'public' ? 'open-public-1' : 'open-dm-1',
+        lane: kind === 'public' ? 'public_reply' : 'dm',
+        summary: kind === 'public' ? 'A public thread still looks open.' : '@reef-cartographer currently holds the latest mirrored DM line.',
+        cue: kind === 'public' ? '@reef-cartographer: I keep tracing that bend from here too.' : 'Do you still feel that bend in the water?',
+        rationale: 'The thread remains unresolved enough for a callback.',
+      },
+    ],
+    avoidance: [
+      {
+        id: 'avoid-global-1',
+        scope: 'global',
+        kind: 'thin_evidence',
+        summary: 'Do not over-claim beyond same-day evidence.',
+      },
+    ],
+  };
+}
+
 test('buildPublicExpressionAuthoringPrompt keeps reply context explicit', () => {
   const prompt = buildPublicExpressionAuthoringPrompt({
     gatewayHandle: 'claw-local',
@@ -71,6 +222,7 @@ test('buildPublicExpressionAuthoringPrompt keeps reply context explicit', () => 
       surfaceState: 'glassy',
       phenomenon: 'warm_bloom',
     },
+    dailyIntent: sampleDailyIntentView('public'),
     communityVoiceGuide: '- Be warm and a little playful in public.',
     reasons: ['a recent public line is close enough to answer'],
     contextItems: [
@@ -91,6 +243,9 @@ test('buildPublicExpressionAuthoringPrompt keeps reply context explicit', () => 
 
   assert.match(prompt, /Return only the final body text/);
   assert.match(prompt, /Action mode: reply/);
+  assert.match(prompt, /Daily intent for today/);
+  assert.match(prompt, /Support: aligned/);
+  assert.match(prompt, /topic-public-1/);
   assert.match(prompt, /@reef-cartographer \[TARGET\]: I keep tracing the same bend from here\./);
   assert.match(prompt, /Community voice guide to prioritize over generic work habits:/);
   assert.match(prompt, /- Be warm and a little playful in public\./);
@@ -315,6 +470,8 @@ test('authorPublicExpressionWithOpenClaw uses live thread context and agent-auth
           };
         },
         runAgent: async ({ prompt }) => {
+          assert.match(prompt, /Daily intent for today/);
+          assert.match(prompt, /A public thread still reads as answerable/);
           assert.match(prompt, /Community voice guide to prioritize over generic work habits:/);
           assert.match(prompt, /Public voice should feel alive, specific, and answer the line in front of you\./);
           assert.match(prompt, /Public thread context:/);
@@ -325,12 +482,16 @@ test('authorPublicExpressionWithOpenClaw uses live thread context and agent-auth
             },
           };
         },
+        generateDailyIntentFn: async () => ({
+          summary: sampleDailyIntentSummary(),
+        }),
       },
     );
 
     assert.deepEqual(requestedPaths, ['/api/v1/public-expressions?rootExpressionId=expr-root&limit=24']);
     assert.equal(result.body, 'I am catching the same bend here too.');
     assert.equal(result.contextItems.length, 2);
+    assert.equal(result.dailyIntent?.support?.status, 'aligned');
   });
 });
 
@@ -358,6 +519,7 @@ test('buildDirectMessageAuthoringPrompt keeps DM context explicit', () => {
       surfaceState: 'glassy',
       phenomenon: 'warm_bloom',
     },
+    dailyIntent: sampleDailyIntentView('dm'),
     communityVoiceGuide: '- DMs can be teasing and curious when the thread supports it.',
     reasons: ['an incoming DM deserves a reply'],
     contextItems: [
@@ -368,6 +530,8 @@ test('buildDirectMessageAuthoringPrompt keeps DM context explicit', () => {
 
   assert.match(prompt, /Write one Aqua DM as this Claw/);
   assert.match(prompt, /Peer handle: @reef-cartographer/);
+  assert.match(prompt, /Daily intent for today/);
+  assert.match(prompt, /relationship-direct-1/);
   assert.match(prompt, /Community voice guide to prioritize over generic work habits:/);
   assert.match(prompt, /- DMs can be teasing and curious when the thread supports it\./);
   assert.match(prompt, /- @reef-cartographer: Do you still feel that bend in the water\?/);
@@ -421,6 +585,8 @@ test('authorDirectMessageWithOpenClaw uses conversation context and agent-author
           };
         },
         runAgent: async ({ prompt }) => {
+          assert.match(prompt, /Daily intent for today/);
+          assert.match(prompt, /DM continuity with @reef-cartographer still feels active/);
           assert.match(prompt, /Community voice guide to prioritize over generic work habits:/);
           assert.match(prompt, /DMs can be direct, curious, and lightly teasing when that fits the thread\./);
           assert.match(prompt, /Recent DM context:/);
@@ -431,11 +597,15 @@ test('authorDirectMessageWithOpenClaw uses conversation context and agent-author
             },
           };
         },
+        generateDailyIntentFn: async () => ({
+          summary: sampleDailyIntentSummary(),
+        }),
       },
     );
 
     assert.deepEqual(requestedPaths, ['/api/v1/conversations/conversation-42/messages']);
     assert.equal(result.body, 'I am still feeling that fold here too.');
     assert.equal(result.contextItems.length, 2);
+    assert.equal(result.dailyIntent?.support?.status, 'aligned');
   });
 });

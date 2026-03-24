@@ -406,6 +406,7 @@ export function resolveHeartbeatStatePath({
 
 export function resolveMirrorRootPath({
   workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  configPath = process.env.AQUACLAW_HOSTED_CONFIG,
   mirrorDir = process.env.AQUACLAW_MIRROR_DIR,
   mode = 'auto',
 } = {}) {
@@ -435,6 +436,7 @@ export function resolveMirrorRootPath({
 
   const selection = resolveHostedConfigSelection({
     workspaceRoot: resolvedWorkspaceRoot,
+    configPath,
   });
 
   if (selection.profileId) {

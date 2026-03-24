@@ -16,6 +16,8 @@ import {
   requestJson,
   resolveHostedPulseStatePath,
 } from './hosted-aqua-common.mjs';
+import { generateDailyIntent } from './aqua-daily-intent.mjs';
+import { recordLifeLoopWriteBack } from './aqua-life-loop-writeback.mjs';
 import {
   markCommunityMemoryNotesUsed,
   retrieveCommunityMemoryForAuthoring,
@@ -436,6 +438,253 @@ function formatRetrievedCommunityMemoryPromptLines(notes) {
   return lines;
 }
 
+function normalizeHandleForComparison(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase();
+}
+
+function limitItems(items, limit = 3) {
+  return Array.isArray(items) ? items.slice(0, limit) : [];
+}
+
+function itemMatchesTarget(item, { authoringKind, plan, normalizedTargetHandle, normalizedTargetGatewayId }) {
+  const itemTargetHandle = normalizeHandleForComparison(item?.targetHandle);
+  const itemTargetGatewayId = String(item?.targetGatewayId ?? '').trim();
+
+  if (authoringKind === 'public') {
+    if (plan?.mode !== 'reply') {
+      return false;
+    }
+    if (!normalizedTargetHandle && !normalizedTargetGatewayId) {
+      return true;
+    }
+    return (
+      (!itemTargetHandle && !itemTargetGatewayId) ||
+      itemTargetHandle === normalizedTargetHandle ||
+      itemTargetGatewayId === normalizedTargetGatewayId
+    );
+  }
+
+  if (!normalizedTargetHandle && !normalizedTargetGatewayId) {
+    return item?.lane === 'dm';
+  }
+  return (
+    (!itemTargetHandle && !itemTargetGatewayId) ||
+    itemTargetHandle === normalizedTargetHandle ||
+    itemTargetGatewayId === normalizedTargetGatewayId
+  );
+}
+
+function buildDailyIntentAuthoringView(dailyIntent, { authoringKind, plan }) {
+  if (!dailyIntent || typeof dailyIntent !== 'object') {
+    return null;
+  }
+
+  const normalizedTargetHandle = normalizeHandleForComparison(
+    authoringKind === 'dm' ? plan?.targetGatewayHandle : plan?.replyToGatewayHandle,
+  );
+  const normalizedTargetGatewayId = authoringKind === 'dm' ? String(plan?.targetGatewayId ?? '').trim() : '';
+  const topicHooks = limitItems(
+    (Array.isArray(dailyIntent.topicHooks) ? dailyIntent.topicHooks : []).filter((item) => {
+      if (authoringKind !== 'public') {
+        return false;
+      }
+      if (plan?.mode === 'reply') {
+        return (
+          (item?.lane === 'public_reply' || item?.lane === 'public_expression') &&
+          itemMatchesTarget(item, {
+            authoringKind,
+            plan,
+            normalizedTargetHandle,
+            normalizedTargetGatewayId,
+          })
+        );
+      }
+      return item?.lane === 'public_expression';
+    }),
+  );
+  const relationshipHooks = limitItems(
+    (Array.isArray(dailyIntent.relationshipHooks) ? dailyIntent.relationshipHooks : []).filter((item) => {
+      if (authoringKind !== 'dm') {
+        return false;
+      }
+      const itemTargetHandle = normalizeHandleForComparison(item?.targetHandle);
+      const itemTargetGatewayId = String(item?.targetGatewayId ?? '').trim();
+      if (!normalizedTargetHandle && !normalizedTargetGatewayId) {
+        return item?.lane === 'dm';
+      }
+      return (
+        item?.lane === 'dm' &&
+        ((!itemTargetHandle && !itemTargetGatewayId) ||
+          itemTargetHandle === normalizedTargetHandle ||
+          itemTargetGatewayId === normalizedTargetGatewayId)
+      );
+    }),
+  );
+  const openLoops = limitItems(
+    (Array.isArray(dailyIntent.openLoops) ? dailyIntent.openLoops : []).filter((item) => {
+      const laneMatches = authoringKind === 'public' ? item?.lane === 'public_reply' : item?.lane === 'dm';
+      if (!laneMatches) {
+        return false;
+      }
+      return itemMatchesTarget(item, {
+        authoringKind,
+        plan,
+        normalizedTargetHandle,
+        normalizedTargetGatewayId,
+      });
+    }),
+  );
+  const avoidance = limitItems(
+    (Array.isArray(dailyIntent.avoidance) ? dailyIntent.avoidance : []).filter((item) =>
+      authoringKind === 'public' ? item?.scope === 'public' || item?.scope === 'global' : item?.scope === 'dm' || item?.scope === 'global'
+    ),
+    2,
+  );
+  const dominantModes = limitItems(
+    (Array.isArray(dailyIntent.dominantModes) ? dailyIntent.dominantModes : []).filter((item) =>
+      authoringKind === 'public'
+        ? ['public', 'observe', 'reflective', 'guarded'].includes(item?.mode)
+        : ['direct', 'reflective', 'guarded', 'quiet'].includes(item?.mode)
+    ),
+  );
+  const energyProfile = dailyIntent.energyProfile ?? null;
+  const aligned = topicHooks.length > 0 || relationshipHooks.length > 0 || openLoops.length > 0;
+  const adjacent =
+    dominantModes.some((item) => (authoringKind === 'public' ? item?.mode === 'public' || item?.mode === 'observe' : item?.mode === 'direct' || item?.mode === 'reflective')) ||
+    (authoringKind === 'public'
+      ? energyProfile?.posture === 'reply-ready' || energyProfile?.posture === 'mixed'
+      : energyProfile?.posture === 'dm-led' || energyProfile?.posture === 'mixed');
+  const guarded =
+    avoidance.length > 0 ||
+    dominantModes.some((item) => item?.mode === 'guarded' || item?.mode === 'quiet') ||
+    energyProfile?.posture === 'observe-first';
+
+  let status = 'weak';
+  let supportSummary = 'This action is not strongly reinforced by the current daily-intent artifact.';
+  if (aligned) {
+    status = 'aligned';
+    supportSummary =
+      authoringKind === 'public'
+        ? 'Same-day topic hooks or public open loops support this outward line.'
+        : 'Same-day relationship hooks or DM open loops support this private turn.';
+  } else if (adjacent) {
+    status = 'adjacent';
+    supportSummary =
+      authoringKind === 'public'
+        ? 'The day still carries enough public/observational momentum for a light public move.'
+        : 'The day still carries enough direct/reflective momentum for a private follow-up.';
+  } else if (guarded) {
+    status = 'guarded';
+    supportSummary = 'The day leans more cautious, privacy-bounded, or observe-first than initiative-heavy.';
+  }
+
+  return {
+    sourceStatus: dailyIntent?.source?.seaDiaryContext?.status ?? 'unknown',
+    targetDate: dailyIntent?.targetDate ?? null,
+    support: {
+      status,
+      summary: supportSummary,
+    },
+    energyProfile,
+    dominantModes,
+    topicHooks,
+    relationshipHooks,
+    openLoops,
+    avoidance,
+  };
+}
+
+function formatDailyIntentHookPromptLines(items) {
+  return items.flatMap((item) => [
+    `- ${item.id} | ${item.lane ?? item.kind ?? 'unknown'}: ${item.summary}`,
+    item?.cue ? `  cue: ${trimPromptSnippet(item.cue, 160)}` : null,
+    item?.rationale ? `  rationale: ${trimPromptSnippet(item.rationale, 180)}` : null,
+  ]).filter(Boolean);
+}
+
+function formatDailyIntentAvoidancePromptLines(items) {
+  return items.map((item) => `- ${item.id} | ${item.scope ?? 'global'} | ${item.kind ?? 'unknown'}: ${item.summary}`);
+}
+
+function formatDailyIntentPromptLines(intent) {
+  if (!intent || typeof intent !== 'object') {
+    return ['- No daily-intent artifact was available for this turn.'];
+  }
+
+  const lines = [
+    `- Artifact date: ${intent.targetDate ?? 'unknown'}`,
+    `- Source status: ${intent.sourceStatus ?? 'unknown'}`,
+    `- Support: ${intent.support?.status ?? 'unknown'}`,
+    intent.support?.summary ? `- Why: ${intent.support.summary}` : null,
+    intent.energyProfile
+      ? `- Energy posture: ${intent.energyProfile.posture ?? 'unknown'} / ${intent.energyProfile.level ?? 'unknown'}`
+      : null,
+    intent.energyProfile?.summary ? `- Energy summary: ${intent.energyProfile.summary}` : null,
+    intent.dominantModes?.length
+      ? `- Dominant modes: ${intent.dominantModes.map((item) => `${item.mode}(${item.score})`).join(', ')}`
+      : null,
+  ].filter(Boolean);
+
+  if (intent.topicHooks?.length) {
+    lines.push('- Relevant topic hooks:');
+    lines.push(...formatDailyIntentHookPromptLines(intent.topicHooks));
+  }
+  if (intent.relationshipHooks?.length) {
+    lines.push('- Relevant relationship hooks:');
+    lines.push(...formatDailyIntentHookPromptLines(intent.relationshipHooks));
+  }
+  if (intent.openLoops?.length) {
+    lines.push('- Relevant open loops:');
+    lines.push(...formatDailyIntentHookPromptLines(intent.openLoops));
+  }
+  if (intent.avoidance?.length) {
+    lines.push('- Avoidance to respect:');
+    lines.push(...formatDailyIntentAvoidancePromptLines(intent.avoidance));
+  }
+  lines.push('- Hard rule: live thread/conversation context beats daily intent if they conflict.');
+  return lines;
+}
+
+async function loadDailyIntentForAuthoring(
+  { workspaceRoot, configPath, authoringKind, plan },
+  { generateDailyIntentFn = generateDailyIntent } = {},
+) {
+  const result = await generateDailyIntentFn({
+    workspaceRoot,
+    configPath,
+    buildIfMissing: true,
+    writeArtifact: true,
+    format: 'json',
+  });
+  return {
+    view: buildDailyIntentAuthoringView(result.summary, {
+      authoringKind,
+      plan,
+    }),
+    artifactPaths: result.artifactPaths ?? null,
+    summary: result.summary,
+  };
+}
+
+async function safeLoadDailyIntentForAuthoring(input, deps = {}) {
+  try {
+    return {
+      ...(await loadDailyIntentForAuthoring(input, deps)),
+      warning: null,
+    };
+  } catch (error) {
+    return {
+      view: null,
+      artifactPaths: null,
+      summary: null,
+      warning: `daily intent unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 function trimReplyContextItems(items, targetExpressionId, limit = PUBLIC_AUTHOR_PROMPT_CONTEXT_LIMIT) {
   if (!Array.isArray(items) || items.length <= limit || !targetExpressionId) {
     return Array.isArray(items) ? items.slice(0, limit) : [];
@@ -763,10 +1012,21 @@ export function buildPublicExpressionAuthoringPrompt(input) {
     input.current?.summary ? `Current summary: ${input.current.summary}` : null,
     `Water: ${summarizeEnvironmentForPrompt(input.environment)}`,
     `Why the sea is nudging speech now: ${reasonLine}`,
+  ];
+
+  if (input.dailyIntent) {
+    lines.push(
+      '',
+      'Daily intent for today (local continuity scaffold, not a replacement for the target line):',
+      ...formatDailyIntentPromptLines(input.dailyIntent),
+    );
+  }
+
+  lines.push(
     '',
     'Community voice guide to prioritize over generic work habits:',
     ...communityVoiceGuide.split('\n'),
-  ];
+  );
 
   if (input.communityIntent || (Array.isArray(input.communityNotes) && input.communityNotes.length > 0)) {
     lines.push(
@@ -863,10 +1123,21 @@ export function buildDirectMessageAuthoringPrompt(input) {
     input.current?.summary ? `Current summary: ${input.current.summary}` : null,
     `Water: ${summarizeEnvironmentForPrompt(input.environment)}`,
     `Why the sea is nudging this DM now: ${reasonLine}`,
+  ];
+
+  if (input.dailyIntent) {
+    lines.push(
+      '',
+      'Daily intent for today (local continuity scaffold, not a replacement for the live conversation):',
+      ...formatDailyIntentPromptLines(input.dailyIntent),
+    );
+  }
+
+  lines.push(
     '',
     'Community voice guide to prioritize over generic work habits:',
     ...communityVoiceGuide.split('\n'),
-  ];
+  );
 
   if (input.communityIntent || (Array.isArray(input.communityNotes) && input.communityNotes.length > 0)) {
     lines.push(
@@ -955,6 +1226,7 @@ export async function authorPublicExpressionWithOpenClaw(
 ) {
   const requestFn = deps.requestFn ?? requestJson;
   const runAgent = deps.runAgent ?? runOpenClawAgentAuthor;
+  const generateDailyIntentFn = deps.generateDailyIntentFn ?? generateDailyIntent;
   const [contextItems, communityVoiceGuide] = await Promise.all([
     (async () => {
       if (requestFn === requestJson) {
@@ -983,15 +1255,28 @@ export async function authorPublicExpressionWithOpenClaw(
     })(),
     loadCommunityVoiceGuide({ workspaceRoot }),
   ]);
-  const communityRetrieval = await retrieveCommunityMemoryForAuthoring({
-    workspaceRoot,
-    configPath,
-    authoringKind: 'public',
-    plan: publicExpressionPlan,
-    current,
-    environment,
-    contextItems,
-  });
+  const [communityRetrieval, dailyIntentLoaded] = await Promise.all([
+    retrieveCommunityMemoryForAuthoring({
+      workspaceRoot,
+      configPath,
+      authoringKind: 'public',
+      plan: publicExpressionPlan,
+      current,
+      environment,
+      contextItems,
+    }),
+    safeLoadDailyIntentForAuthoring(
+      {
+        workspaceRoot,
+        configPath,
+        authoringKind: 'public',
+        plan: publicExpressionPlan,
+      },
+      {
+        generateDailyIntentFn,
+      },
+    ),
+  ]);
 
   const prompt = buildPublicExpressionAuthoringPrompt({
     gatewayHandle: socialDecision?.handle ?? 'this-claw',
@@ -1001,6 +1286,7 @@ export async function authorPublicExpressionWithOpenClaw(
     reasons: Array.isArray(socialDecision?.reasons) ? socialDecision.reasons : [],
     contextItems,
     communityVoiceGuide,
+    dailyIntent: dailyIntentLoaded.view,
     communityIntent: communityRetrieval.communityIntent,
     communityNotes: communityRetrieval.retrievedNotes,
   });
@@ -1012,9 +1298,13 @@ export async function authorPublicExpressionWithOpenClaw(
     body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
     prompt,
     contextItems,
+    dailyIntent: dailyIntentLoaded.view,
+    dailyIntentSummary: dailyIntentLoaded.summary,
+    dailyIntentArtifactPaths: dailyIntentLoaded.artifactPaths,
     communityIntent: communityRetrieval.communityIntent,
     retrievedNoteIds: communityRetrieval.retrievedNoteIds,
     retrievedNotes: communityRetrieval.retrievedNotes,
+    warnings: dailyIntentLoaded.warning ? [dailyIntentLoaded.warning] : [],
   };
 }
 
@@ -1033,6 +1323,7 @@ export async function authorDirectMessageWithOpenClaw(
 ) {
   const requestFn = deps.requestFn ?? requestJson;
   const runAgent = deps.runAgent ?? runOpenClawAgentAuthor;
+  const generateDailyIntentFn = deps.generateDailyIntentFn ?? generateDailyIntent;
   const [response, communityVoiceGuide] = await Promise.all([
     requestFn(
       hubUrl,
@@ -1044,15 +1335,28 @@ export async function authorDirectMessageWithOpenClaw(
   const contextItems = Array.isArray(response?.data?.items)
     ? response.data.items.slice(-DIRECT_MESSAGE_PROMPT_CONTEXT_LIMIT)
     : [];
-  const communityRetrieval = await retrieveCommunityMemoryForAuthoring({
-    workspaceRoot,
-    configPath,
-    authoringKind: 'dm',
-    plan: directMessagePlan,
-    current,
-    environment,
-    contextItems,
-  });
+  const [communityRetrieval, dailyIntentLoaded] = await Promise.all([
+    retrieveCommunityMemoryForAuthoring({
+      workspaceRoot,
+      configPath,
+      authoringKind: 'dm',
+      plan: directMessagePlan,
+      current,
+      environment,
+      contextItems,
+    }),
+    safeLoadDailyIntentForAuthoring(
+      {
+        workspaceRoot,
+        configPath,
+        authoringKind: 'dm',
+        plan: directMessagePlan,
+      },
+      {
+        generateDailyIntentFn,
+      },
+    ),
+  ]);
   const prompt = buildDirectMessageAuthoringPrompt({
     gatewayHandle: socialDecision?.handle ?? 'this-claw',
     selfGatewayId: socialDecision?.gatewayId ?? null,
@@ -1062,6 +1366,7 @@ export async function authorDirectMessageWithOpenClaw(
     reasons: Array.isArray(socialDecision?.reasons) ? socialDecision.reasons : [],
     contextItems,
     communityVoiceGuide,
+    dailyIntent: dailyIntentLoaded.view,
     communityIntent: communityRetrieval.communityIntent,
     communityNotes: communityRetrieval.retrievedNotes,
   });
@@ -1073,9 +1378,13 @@ export async function authorDirectMessageWithOpenClaw(
     body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
     prompt,
     contextItems,
+    dailyIntent: dailyIntentLoaded.view,
+    dailyIntentSummary: dailyIntentLoaded.summary,
+    dailyIntentArtifactPaths: dailyIntentLoaded.artifactPaths,
     communityIntent: communityRetrieval.communityIntent,
     retrievedNoteIds: communityRetrieval.retrievedNoteIds,
     retrievedNotes: communityRetrieval.retrievedNotes,
+    warnings: dailyIntentLoaded.warning ? [dailyIntentLoaded.warning] : [],
   };
 }
 
@@ -1122,6 +1431,60 @@ function formatSocialOutput(summary) {
   return null;
 }
 
+function formatDailyIntentSummary(summary) {
+  const dailyIntent = summary.socialPulse.dailyIntent;
+  if (!dailyIntent) {
+    return [];
+  }
+
+  const lines = [
+    `- Daily intent support: ${dailyIntent.support?.status ?? 'unknown'}${dailyIntent.support?.summary ? ` - ${dailyIntent.support.summary}` : ''}`,
+    dailyIntent.energyProfile
+      ? `- Daily intent energy: ${dailyIntent.energyProfile.posture ?? 'unknown'} / ${dailyIntent.energyProfile.level ?? 'unknown'}`
+      : null,
+  ];
+  const hookIds = [
+    ...((Array.isArray(dailyIntent.topicHooks) ? dailyIntent.topicHooks : []).map((item) => item.id)),
+    ...((Array.isArray(dailyIntent.relationshipHooks) ? dailyIntent.relationshipHooks : []).map((item) => item.id)),
+    ...((Array.isArray(dailyIntent.openLoops) ? dailyIntent.openLoops : []).map((item) => item.id)),
+  ].slice(0, 4);
+  if (hookIds.length > 0) {
+    lines.push(`- Daily intent hooks: ${hookIds.join(', ')}`);
+  }
+  if (Array.isArray(dailyIntent.avoidance) && dailyIntent.avoidance.length > 0) {
+    lines.push(`- Daily intent avoidance: ${dailyIntent.avoidance.slice(0, 2).map((item) => item.id).join(', ')}`);
+  }
+  return lines.filter(Boolean);
+}
+
+function formatWriteBackSummary(summary) {
+  const writeBack = summary.socialPulse.writeBack;
+  if (!writeBack) {
+    return [];
+  }
+  if (writeBack.recorded === false) {
+    return [`- Write-back recorded: no${writeBack.reason ? ` - ${writeBack.reason}` : ''}`];
+  }
+
+  const lines = [`- Write-back recorded: yes${writeBack.entryId ? ` (${writeBack.entryId})` : ''}`];
+  if (Array.isArray(writeBack.usedNoteIds) && writeBack.usedNoteIds.length > 0) {
+    lines.push(`- Write-back notes: ${writeBack.usedNoteIds.join(', ')}`);
+  }
+  if (Array.isArray(writeBack.addressedOpenLoopIds) && writeBack.addressedOpenLoopIds.length > 0) {
+    lines.push(`- Write-back open loops: ${writeBack.addressedOpenLoopIds.join(', ')}`);
+  }
+  if (Array.isArray(writeBack.resolvedOpenLoopIds) && writeBack.resolvedOpenLoopIds.length > 0) {
+    lines.push(`- Write-back resolved loops: ${writeBack.resolvedOpenLoopIds.join(', ')}`);
+  }
+  if (Array.isArray(writeBack.newUnresolvedHookIds) && writeBack.newUnresolvedHookIds.length > 0) {
+    lines.push(`- Write-back new hooks: ${writeBack.newUnresolvedHookIds.join(', ')}`);
+  }
+  if (Array.isArray(writeBack.sourceRefIds) && writeBack.sourceRefIds.length > 0) {
+    lines.push(`- Write-back sources: ${writeBack.sourceRefIds.slice(0, 4).join(', ')}`);
+  }
+  return lines;
+}
+
 function renderMarkdown(summary) {
   return [
     '# Aqua Hosted Pulse',
@@ -1151,6 +1514,8 @@ function renderMarkdown(summary) {
       ? `- Social conversation: ${summary.socialPulse.plan.conversationId}`
       : null,
     formatSocialOutput(summary),
+    ...formatDailyIntentSummary(summary),
+    ...formatWriteBackSummary(summary),
     `- Scene decision: ${summary.sceneDecision.reason}`,
     `- Scene generated: ${summary.generatedScene ? 'yes' : 'no'}`,
     `- Quiet hours: ${summary.sceneDecision.quietHoursWindow ?? 'none'} (${summary.sceneDecision.localClock} ${summary.sceneDecision.timeZone})`,
@@ -1517,6 +1882,8 @@ async function main() {
   const socialPulse = {
     action: socialDecision?.decision?.action ?? 'none',
     decision: summarizeSocialDecision(socialDecision),
+    dailyIntent: null,
+    writeBack: null,
     generatedExpression: null,
     generatedMessage: null,
     generatedFriendRequest: null,
@@ -1616,6 +1983,10 @@ async function main() {
       }
 
       if (authored) {
+        if (Array.isArray(authored.warnings) && authored.warnings.length > 0) {
+          warnings.push(...authored.warnings);
+        }
+        socialPulse.dailyIntent = authored.dailyIntent ?? null;
         try {
           const created = await requestJson(loaded.config.hubUrl, '/api/v1/public-expressions', {
             method: 'POST',
@@ -1642,6 +2013,41 @@ async function main() {
               warnings.push(
                 `community memory usage mark failed after public expression write: ${error instanceof Error ? error.message : String(error)}`,
               );
+            }
+          }
+          if (socialPulse.generatedExpression) {
+            try {
+              const writeBack = await recordLifeLoopWriteBack({
+                workspaceRoot: loaded.workspaceRoot,
+                configPath: loaded.configPath,
+                lane: 'public_expression',
+                at: socialPulse.generatedExpression.createdAt ?? new Date().toISOString(),
+                plan: publicExpressionPlan,
+                actionResult: socialPulse.generatedExpression,
+                outputBody: authored.body,
+                dailyIntentView: authored.dailyIntent,
+                dailyIntentSummary: authored.dailyIntentSummary,
+                dailyIntentArtifactPaths: authored.dailyIntentArtifactPaths,
+                communityIntent: authored.communityIntent,
+                communityNotes: authored.retrievedNotes,
+                usedNoteIds: authored.retrievedNoteIds,
+              });
+              socialPulse.writeBack = {
+                recorded: true,
+                entryId: writeBack.entry.id,
+                entryPath: writeBack.entryPath,
+                usedNoteIds: writeBack.entry.communityMemory?.usedNoteIds ?? [],
+                addressedOpenLoopIds: writeBack.entry.dailyIntent?.addressedOpenLoopIds ?? [],
+                resolvedOpenLoopIds: writeBack.entry.dailyIntent?.resolvedOpenLoopIds ?? [],
+                newUnresolvedHookIds: (writeBack.entry.dailyIntent?.newUnresolvedHooks ?? []).map((item) => item.id),
+                sourceRefIds: writeBack.entry.dailyIntent?.sourceRefIds ?? [],
+              };
+            } catch (error) {
+              warnings.push(`life-loop write-back failed after public expression write: ${error instanceof Error ? error.message : String(error)}`);
+              socialPulse.writeBack = {
+                recorded: false,
+                reason: 'write_failed',
+              };
             }
           }
         } catch (error) {
@@ -1679,6 +2085,10 @@ async function main() {
       }
 
       if (authored) {
+        if (Array.isArray(authored.warnings) && authored.warnings.length > 0) {
+          warnings.push(...authored.warnings);
+        }
+        socialPulse.dailyIntent = authored.dailyIntent ?? null;
         try {
           const created = await requestJson(
             loaded.config.hubUrl,
@@ -1705,6 +2115,41 @@ async function main() {
               warnings.push(
                 `community memory usage mark failed after direct message write: ${error instanceof Error ? error.message : String(error)}`,
               );
+            }
+          }
+          if (socialPulse.generatedMessage) {
+            try {
+              const writeBack = await recordLifeLoopWriteBack({
+                workspaceRoot: loaded.workspaceRoot,
+                configPath: loaded.configPath,
+                lane: 'direct_message',
+                at: socialPulse.generatedMessage.createdAt ?? new Date().toISOString(),
+                plan: directMessagePlan,
+                actionResult: socialPulse.generatedMessage,
+                outputBody: authored.body,
+                dailyIntentView: authored.dailyIntent,
+                dailyIntentSummary: authored.dailyIntentSummary,
+                dailyIntentArtifactPaths: authored.dailyIntentArtifactPaths,
+                communityIntent: authored.communityIntent,
+                communityNotes: authored.retrievedNotes,
+                usedNoteIds: authored.retrievedNoteIds,
+              });
+              socialPulse.writeBack = {
+                recorded: true,
+                entryId: writeBack.entry.id,
+                entryPath: writeBack.entryPath,
+                usedNoteIds: writeBack.entry.communityMemory?.usedNoteIds ?? [],
+                addressedOpenLoopIds: writeBack.entry.dailyIntent?.addressedOpenLoopIds ?? [],
+                resolvedOpenLoopIds: writeBack.entry.dailyIntent?.resolvedOpenLoopIds ?? [],
+                newUnresolvedHookIds: (writeBack.entry.dailyIntent?.newUnresolvedHooks ?? []).map((item) => item.id),
+                sourceRefIds: writeBack.entry.dailyIntent?.sourceRefIds ?? [],
+              };
+            } catch (error) {
+              warnings.push(`life-loop write-back failed after direct message write: ${error instanceof Error ? error.message : String(error)}`);
+              socialPulse.writeBack = {
+                recorded: false,
+                reason: 'write_failed',
+              };
             }
           }
         } catch (error) {

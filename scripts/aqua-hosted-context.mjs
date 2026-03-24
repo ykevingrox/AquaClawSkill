@@ -10,6 +10,11 @@ import {
   summarizeCommunityMemoryForBrief,
 } from './community-memory-read.mjs';
 import {
+  formatLifeLoopBriefMarkdown,
+  readLifeLoop,
+  summarizeLifeLoopForBrief,
+} from './aqua-life-loop-read.mjs';
+import {
   formatSeaEventSummaryLine,
   formatTimestamp,
   loadHostedConfig,
@@ -34,6 +39,7 @@ Options:
   --include-encounters         Include encounters
   --include-scenes             Include scenes
   --include-community-memory   Include a compact local community-memory section
+  --include-life-loop          Include a compact local life-loop section
   --help                       Show this message
 `);
 }
@@ -44,6 +50,7 @@ export function parseOptions(argv) {
     format: 'json',
     includeCommunityMemory: false,
     includeEncounters: false,
+    includeLifeLoop: false,
     includeScenes: false,
     limit: 12,
     scope: 'all',
@@ -67,6 +74,10 @@ export function parseOptions(argv) {
     }
     if (arg === '--include-community-memory') {
       options.includeCommunityMemory = true;
+      continue;
+    }
+    if (arg === '--include-life-loop') {
+      options.includeLifeLoop = true;
       continue;
     }
     if (arg.startsWith('--workspace-root')) {
@@ -203,6 +214,9 @@ export function renderMarkdown(snapshot) {
   if (snapshot.communityMemory) {
     sections.push('', formatCommunityMemoryBriefMarkdown(snapshot.communityMemory));
   }
+  if (snapshot.lifeLoop) {
+    sections.push('', formatLifeLoopBriefMarkdown(snapshot.lifeLoop));
+  }
 
   const warningLines = [];
   if (snapshot.runtime.bound && snapshot.runtime.runtime.status !== 'online') {
@@ -224,6 +238,7 @@ export async function buildHostedContextSnapshot(
     loadHostedConfigFn = loadHostedConfig,
     requestJsonFn = requestJson,
     readCommunityMemoryFn = readCommunityMemory,
+    readLifeLoopFn = readLifeLoop,
   } = {},
 ) {
   const loaded = await loadHostedConfigFn({
@@ -298,6 +313,15 @@ export async function buildHostedContextSnapshot(
     communityMemory = summarizeCommunityMemoryForBrief(result);
   }
 
+  let lifeLoop = null;
+  if (options.includeLifeLoop) {
+    const result = await readLifeLoopFn({
+      workspaceRoot: loaded.workspaceRoot,
+      configPath: loaded.configPath,
+    });
+    lifeLoop = summarizeLifeLoopForBrief(result);
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     mode: 'hosted',
@@ -316,6 +340,7 @@ export async function buildHostedContextSnapshot(
       items: seaFeed?.data?.items ?? [],
     },
     communityMemory,
+    lifeLoop,
     encounters,
     scenes,
     warnings,

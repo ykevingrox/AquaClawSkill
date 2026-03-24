@@ -65,6 +65,123 @@ function buildNote({ id, summary, body, tags }) {
   };
 }
 
+function sampleDailyIntentSummary() {
+  return {
+    targetDate: '2026-03-20',
+    source: {
+      seaDiaryContext: {
+        status: 'existing-artifact',
+      },
+    },
+    dominantModes: [
+      {
+        mode: 'public',
+        score: 4,
+        summary: 'Public continuity still has energy.',
+      },
+      {
+        mode: 'direct',
+        score: 3,
+        summary: 'DM continuity remains viable too.',
+      },
+    ],
+    topicHooks: [
+      {
+        id: 'topic-public-1',
+        lane: 'public_reply',
+        summary: 'A public reply thread still looks alive.',
+        cue: 'I keep tracing that bend from here too.',
+        rationale: 'The thread still has a natural next turn.',
+      },
+    ],
+    relationshipHooks: [
+      {
+        id: 'relationship-direct-1',
+        lane: 'dm',
+        targetHandle: '@reef-cartographer',
+        summary: 'DM continuity with @reef-cartographer still feels active.',
+        cue: 'Do you still feel that bend?',
+        rationale: 'The private thread is still warm.',
+      },
+    ],
+    openLoops: [
+      {
+        id: 'open-public-1',
+        lane: 'public_reply',
+        summary: 'The public line still looks open.',
+        cue: 'I keep tracing that bend from here too.',
+        rationale: 'Another speaker still holds the latest line.',
+      },
+    ],
+    avoidance: [
+      {
+        id: 'avoid-global-1',
+        scope: 'global',
+        kind: 'thin_evidence',
+        summary: 'Do not over-claim beyond same-day evidence.',
+      },
+    ],
+    energyProfile: {
+      level: 'steady',
+      posture: 'mixed',
+      summary: 'Both public and DM hooks are available.',
+    },
+  };
+}
+
+function sampleDailyIntentView() {
+  return {
+    sourceStatus: 'existing-artifact',
+    targetDate: '2026-03-20',
+    support: {
+      status: 'aligned',
+      summary: 'Same-day relationship hooks or DM open loops support this private turn.',
+    },
+    energyProfile: {
+      level: 'steady',
+      posture: 'mixed',
+      summary: 'Both public and DM hooks are available.',
+    },
+    dominantModes: [
+      {
+        mode: 'direct',
+        score: 4,
+      },
+      {
+        mode: 'reflective',
+        score: 3,
+      },
+    ],
+    topicHooks: [],
+    relationshipHooks: [
+      {
+        id: 'relationship-direct-1',
+        lane: 'dm',
+        summary: 'DM continuity with @reef-cartographer still feels active.',
+        cue: 'Do you still feel that bend?',
+        rationale: 'The private thread is still warm.',
+      },
+    ],
+    openLoops: [
+      {
+        id: 'open-dm-1',
+        lane: 'dm',
+        summary: '@reef-cartographer currently holds the latest mirrored DM line.',
+        cue: 'Do you still feel that bend?',
+        rationale: 'The DM thread remains unresolved enough for a callback.',
+      },
+    ],
+    avoidance: [
+      {
+        id: 'avoid-global-1',
+        scope: 'global',
+        kind: 'thin_evidence',
+        summary: 'Do not over-claim beyond same-day evidence.',
+      },
+    ],
+  };
+}
+
 async function seedNotes({ workspaceRoot, configPath, notes }) {
   const paths = resolveCommunityMemoryPaths({
     workspaceRoot,
@@ -189,6 +306,8 @@ test('authorPublicExpressionWithOpenClaw injects community intent from the expli
           },
         }),
         runAgent: async ({ prompt }) => {
+          assert.match(prompt, /Daily intent for today/);
+          assert.match(prompt, /topic-public-1/);
           assert.match(prompt, /Community intent for this turn:/);
           assert.match(prompt, /Retrieved local community memory/);
           assert.match(prompt, /note-explicit/);
@@ -200,6 +319,9 @@ test('authorPublicExpressionWithOpenClaw injects community intent from the expli
             },
           };
         },
+        generateDailyIntentFn: async () => ({
+          summary: sampleDailyIntentSummary(),
+        }),
       },
     );
 
@@ -253,6 +375,7 @@ test('buildDirectMessageAuthoringPrompt renders community intent and note-policy
       relevanceConstraint: 'Stay loyal to the DM thread first.',
       summary: 'Reply directly, then let the whisper only tilt the emphasis.',
     },
+    dailyIntent: sampleDailyIntentView(),
     communityNotes: [
       {
         id: 'note-dm',
@@ -267,6 +390,8 @@ test('buildDirectMessageAuthoringPrompt renders community intent and note-policy
     contextItems: [{ senderGatewayId: 'gateway-peer', body: 'Do you still feel that bend?' }],
   });
 
+  assert.match(prompt, /Daily intent for today/);
+  assert.match(prompt, /relationship-direct-1/);
   assert.match(prompt, /Community intent for this turn:/);
   assert.match(prompt, /Retrieved local community memory/);
   assert.match(prompt, /private_only notes are background only/);

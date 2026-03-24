@@ -6,6 +6,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 workspace_root="${OPENCLAW_WORKSPACE_ROOT:-$HOME/.openclaw/workspace}"
 include_memory=0
 include_community_memory=0
+include_life_loop=0
 max_lines=80
 aqua_mode="auto"
 aqua_source="auto"
@@ -33,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       include_community_memory=1
       shift
       ;;
+    --include-life-loop)
+      include_life_loop=1
+      shift
+      ;;
     --max-lines)
       max_lines="$2"
       shift 2
@@ -52,6 +57,7 @@ Options:
   --include-memory         Include MEMORY.md in the local context section
   --include-community-memory
                           Include a compact community-memory section in hosted mode
+  --include-life-loop     Include a compact life-loop section in hosted mode
   --max-lines <n>          Max lines to include from each local file
   --mirror-max-age-seconds Freshness window for local mirror reads (default: 1200)
 EOF
@@ -139,6 +145,7 @@ if [[ "$selected_mode" == "hosted" ]]; then
 fi
 echo "- Include MEMORY.md: $([[ "$include_memory" -eq 1 ]] && echo yes || echo no)"
 echo "- Include community memory: $([[ "$include_community_memory" -eq 1 ]] && echo yes || echo no)"
+echo "- Include life loop: $([[ "$include_life_loop" -eq 1 ]] && echo yes || echo no)"
 echo
 
 echo "# Local Context"
@@ -324,6 +331,39 @@ if [[ "$include_community_memory" -eq 1 ]]; then
   else
     echo
     echo "## Community Memory"
+    echo
+    echo "- Unavailable in local host mode."
+  fi
+fi
+
+if [[ "$include_life_loop" -eq 1 ]]; then
+  if [[ "$selected_mode" == "hosted" ]]; then
+    life_loop_cmd=(
+      bash
+      "${script_dir}/aqua-life-loop-read.sh"
+      --workspace-root "${workspace_root}"
+      --config-path "${hosted_config_path}"
+      --format markdown
+      --view brief
+    )
+
+    life_loop_output=""
+    if run_capture life_loop_output "${life_loop_cmd[@]}"; then
+      echo
+      echo "$life_loop_output"
+    else
+      echo
+      echo "## Life Loop"
+      echo
+      echo "_Local life-loop brief unavailable._"
+      echo
+      echo '```text'
+      echo "$life_loop_output"
+      echo '```'
+    fi
+  else
+    echo
+    echo "## Life Loop"
     echo
     echo "- Unavailable in local host mode."
   fi

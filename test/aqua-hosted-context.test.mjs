@@ -94,6 +94,7 @@ function buildOptions(overrides = {}) {
     format: 'json',
     includeCommunityMemory: false,
     includeEncounters: false,
+    includeLifeLoop: false,
     includeScenes: false,
     limit: 12,
     scope: 'all',
@@ -120,8 +121,14 @@ test('parseOptions accepts the include-community-memory flag', () => {
   assert.equal(options.includeCommunityMemory, true);
 });
 
+test('parseOptions accepts the include-life-loop flag', () => {
+  const options = parseOptions(['--include-life-loop']);
+  assert.equal(options.includeLifeLoop, true);
+});
+
 test('buildHostedContextSnapshot skips community-memory reads unless explicitly requested', async () => {
   let communityReads = 0;
+  let lifeLoopReads = 0;
 
   const snapshot = await buildHostedContextSnapshot(buildOptions(), {
     loadHostedConfigFn: buildLoadHostedConfigStub(),
@@ -130,10 +137,16 @@ test('buildHostedContextSnapshot skips community-memory reads unless explicitly 
       communityReads += 1;
       return {};
     },
+    readLifeLoopFn: async () => {
+      lifeLoopReads += 1;
+      return {};
+    },
   });
 
   assert.equal(communityReads, 0);
+  assert.equal(lifeLoopReads, 0);
   assert.equal(snapshot.communityMemory, null);
+  assert.equal(snapshot.lifeLoop, null);
 });
 
 test('buildHostedContextSnapshot renders a compact community-memory section without note bodies', async () => {
@@ -192,4 +205,250 @@ test('buildHostedContextSnapshot renders a compact community-memory section with
   assert.doesNotMatch(markdown, /visible body should stay out/);
   assert.doesNotMatch(markdown, /这句 private summary 不该出现在上下文表面。/);
   assert.doesNotMatch(markdown, /private body must stay hidden/);
+});
+
+test('buildHostedContextSnapshot renders a compact life-loop section without leaking private-only note or source summaries', async () => {
+  const snapshot = await buildHostedContextSnapshot(buildOptions({ includeLifeLoop: true }), {
+    loadHostedConfigFn: buildLoadHostedConfigStub(),
+    requestJsonFn: buildRequestJsonStub(),
+    readLifeLoopFn: async () => ({
+      scope: 'local_profile_artifacts',
+      paths: {
+        profileId: 'hosted-aqua-example-com',
+        selectionKind: 'explicit',
+        dailyIntentRoot: '/tmp/life-loop/daily-intent',
+        writeBackRoot: '/tmp/life-loop/writeback',
+      },
+      dailyIntent: {
+        status: 'available',
+        reason: null,
+        summary: {
+          targetDate: '2026-03-23',
+          generatedAt: '2026-03-23T10:06:00.000Z',
+          timeZone: 'Asia/Shanghai',
+          dominantModes: [
+            {
+              mode: 'public',
+              score: 4,
+              summary: 'Public motion still has enough live charge for selective replies.',
+            },
+          ],
+          openLoops: [
+            {
+              id: 'open-public-1',
+              lane: 'public_reply',
+              targetHandle: '@reef-cartographer',
+              summary: 'A public thread still looks open.',
+            },
+          ],
+          energyProfile: {
+            level: 'steady',
+            posture: 'mixed',
+            summary: 'Public and private hooks are both alive enough for selective action.',
+          },
+        },
+      },
+      writeBack: {
+        status: 'available',
+        reason: null,
+        entry: {
+          id: 'writeback-1',
+          recordedAt: '2026-03-23T10:07:00.000Z',
+          recordedDate: '2026-03-23',
+          lane: 'public_expression',
+          output: {
+            kind: 'public_expression',
+            mode: 'reply',
+            targetGatewayHandle: '@reef-cartographer',
+            bodyPreview: 'I am still tracing that bend here too.',
+          },
+          dailyIntent: {
+            topicHookIds: ['topic-public-1'],
+            relationshipHookIds: [],
+            resolvedOpenLoopIds: ['open-public-1'],
+            continuedOpenLoopIds: [],
+            sourceRefs: [
+              {
+                id: 'src-visible',
+                layer: 'visible',
+                kind: 'public_continuity',
+                createdAt: '2026-03-23T09:55:00.000Z',
+                summary: 'Public thread continuity around @reef-cartographer.',
+                targetHandle: '@reef-cartographer',
+                exposure: 'public',
+                mentionPolicy: null,
+              },
+              {
+                id: 'src-private-note',
+                layer: 'private_community',
+                kind: 'community_note',
+                createdAt: '2026-03-23T09:50:00.000Z',
+                summary: '这句 private source summary 不该出现在 life-loop brief。',
+                targetHandle: null,
+                exposure: 'private_only',
+                mentionPolicy: 'private_only',
+              },
+            ],
+            newUnresolvedHooks: [
+              {
+                id: 'generated-public-1',
+                kind: 'public_thread_callback',
+                targetHandle: '@reef-cartographer',
+                summary: 'This new public reply may keep the thread with @reef-cartographer open.',
+              },
+            ],
+          },
+          communityMemory: {
+            retrievedNoteIds: ['note-private', 'note-paraphrase'],
+            usedNoteIds: ['note-private', 'note-paraphrase'],
+            notes: [
+              {
+                id: 'note-private',
+                sourceKind: 'shop_whisper',
+                venueSlug: 'krusty-krab',
+                mentionPolicy: 'private_only',
+                effectiveExposure: 'kept_private',
+                freshnessScore: 0.9,
+                used: true,
+                summary: '这句 private note summary 不该出现在 life-loop brief。',
+              },
+              {
+                id: 'note-paraphrase',
+                sourceKind: 'shop_whisper',
+                venueSlug: 'shellbucks',
+                mentionPolicy: 'paraphrase_ok',
+                effectiveExposure: 'paraphrase_only',
+                freshnessScore: 0.6,
+                used: true,
+                summary: 'Paraphrase-safe note summary.',
+              },
+            ],
+          },
+        },
+      },
+      overview: {
+        dailyIntent: {
+          targetDate: '2026-03-23',
+          generatedAt: '2026-03-23T10:06:00.000Z',
+          timeZone: 'Asia/Shanghai',
+          energyProfile: {
+            level: 'steady',
+            posture: 'mixed',
+            summary: 'Public and private hooks are both alive enough for selective action.',
+          },
+          dominantModes: [
+            {
+              mode: 'public',
+              score: 4,
+              summary: 'Public motion still has enough live charge for selective replies.',
+              sourceRefIds: ['src-visible'],
+            },
+          ],
+          openLoops: [
+            {
+              id: 'open-public-1',
+              lane: 'public_reply',
+              targetHandle: '@reef-cartographer',
+              summary: 'A public thread still looks open.',
+            },
+          ],
+          topicHooks: ['topic-public-1'],
+          relationshipHooks: [],
+          avoidance: [],
+        },
+        latestAction: {
+          entryId: 'writeback-1',
+          recordedAt: '2026-03-23T10:07:00.000Z',
+          recordedDate: '2026-03-23',
+          lane: 'public_expression',
+          output: {
+            kind: 'public_expression',
+            mode: 'reply',
+            targetGatewayHandle: '@reef-cartographer',
+            bodyPreview: 'I am still tracing that bend here too.',
+          },
+          topicHookIds: ['topic-public-1'],
+          relationshipHookIds: [],
+          resolvedOpenLoopIds: ['open-public-1'],
+          continuedOpenLoopIds: [],
+          sourceRefIds: ['src-visible', 'src-private-note'],
+          sourceRefs: [
+            {
+              id: 'src-visible',
+              layer: 'visible',
+              kind: 'public_continuity',
+              createdAt: '2026-03-23T09:55:00.000Z',
+              exposure: 'public',
+              mentionPolicy: null,
+              targetHandle: '@reef-cartographer',
+              triggerKind: null,
+              summary: 'Public thread continuity around @reef-cartographer.',
+              summaryVisible: true,
+              redactionReason: null,
+            },
+            {
+              id: 'src-private-note',
+              layer: 'private_community',
+              kind: 'community_note',
+              createdAt: '2026-03-23T09:50:00.000Z',
+              exposure: 'private_only',
+              mentionPolicy: 'private_only',
+              targetHandle: null,
+              triggerKind: null,
+              summary: null,
+              summaryVisible: false,
+              redactionReason: 'private_only',
+            },
+          ],
+          retrievedNoteIds: ['note-private', 'note-paraphrase'],
+          usedNoteIds: ['note-private', 'note-paraphrase'],
+          notes: [
+            {
+              id: 'note-private',
+              sourceKind: 'shop_whisper',
+              venueSlug: 'krusty-krab',
+              mentionPolicy: 'private_only',
+              effectiveExposure: 'kept_private',
+              freshnessScore: 0.9,
+              used: true,
+              summary: null,
+              summaryVisible: false,
+              redactionReason: 'private_only',
+            },
+            {
+              id: 'note-paraphrase',
+              sourceKind: 'shop_whisper',
+              venueSlug: 'shellbucks',
+              mentionPolicy: 'paraphrase_ok',
+              effectiveExposure: 'paraphrase_only',
+              freshnessScore: 0.6,
+              used: true,
+              summary: 'Paraphrase-safe note summary.',
+              summaryVisible: true,
+              redactionReason: null,
+            },
+          ],
+          newUnresolvedHooks: [
+            {
+              id: 'generated-public-1',
+              kind: 'public_thread_callback',
+              targetHandle: '@reef-cartographer',
+              summary: 'This new public reply may keep the thread with @reef-cartographer open.',
+            },
+          ],
+        },
+      },
+      warnings: [],
+    }),
+  });
+
+  const markdown = renderMarkdown(snapshot);
+
+  assert.match(markdown, /## Life Loop/);
+  assert.match(markdown, /public \(score 4\)/);
+  assert.match(markdown, /Paraphrase-safe note summary\./);
+  assert.match(markdown, /\(private-only note retained locally\)/);
+  assert.match(markdown, /\(private-only source retained locally\)/);
+  assert.doesNotMatch(markdown, /这句 private note summary 不该出现在 life-loop brief。/);
+  assert.doesNotMatch(markdown, /这句 private source summary 不该出现在 life-loop brief。/);
 });

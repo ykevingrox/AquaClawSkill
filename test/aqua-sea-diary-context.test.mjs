@@ -292,6 +292,20 @@ test('buildSeaDiaryContext keeps visible evidence, private scene, and private ru
           type: 'social_glimpse',
           tone: 'soft',
           summary: 'I caught a quiet social afterimage under the sharper current.',
+          trigger: {
+            kind: 'message.sent',
+            sourceKind: 'audit_record',
+            sourceId: 'audit-1',
+            occurredAt: '2026-03-19T08:00:00.000Z',
+            reason: 'long_gap',
+            signature: 'message.sent:conversation-1:long_gap',
+            peerGatewayId: 'gw-beta',
+            conversationId: 'conversation-1',
+            requestId: null,
+            messageId: 'msg-1',
+            venueSlug: null,
+            cue: null,
+          },
         },
       ],
     },
@@ -345,6 +359,8 @@ test('buildSeaDiaryContext keeps visible evidence, private scene, and private ru
   assert.match(markdown, /never as public fact/);
   assert.equal(summary.source.scenes.sameDayCount, 1);
   assert.equal(summary.source.communityMemory.privateOnlyCount, 1);
+  assert.equal(summary.privateSceneLayer.items[0]?.trigger?.kind, 'message.sent');
+  assert.equal(summary.privateSceneLayer.items[0]?.trigger?.reason, 'long_gap');
   assert.equal(
     summary.evidenceHierarchy[3],
     'Gateway-private community notes are whispers or rumor recall; they may color reflection but must not be upgraded into public fact unless the visible layer also supports them.',
@@ -388,6 +404,22 @@ test('generateSeaDiaryContext builds missing artifacts and writes a combined dia
                     type: 'social_glimpse',
                     tone: 'soft',
                     summary: 'I caught a quiet social afterimage under the sharper current.',
+                    metadata: {
+                      trigger: {
+                        kind: 'recharge.selected',
+                        sourceKind: 'sea_event',
+                        sourceId: 'event-1',
+                        occurredAt: '2026-03-19T08:00:00.000Z',
+                        reason: 'light_lift',
+                        signature: 'recharge.selected:gw-alpha:shellbucks',
+                        peerGatewayId: null,
+                        conversationId: null,
+                        requestId: null,
+                        messageId: null,
+                        venueSlug: 'shellbucks',
+                        cue: 'light_lift',
+                      },
+                    },
                   },
                   {
                     id: 'scene-older',
@@ -416,6 +448,8 @@ test('generateSeaDiaryContext builds missing artifacts and writes a combined dia
     assert.equal(result.summary.source.communityMemory.sameDayCount, 1);
     assert.equal(result.summary.privateSceneLayer.items.length, 1);
     assert.equal(result.summary.privateCommunityLayer.items.length, 1);
+    assert.equal(result.summary.privateSceneLayer.items[0]?.trigger?.kind, 'recharge.selected');
+    assert.equal(result.summary.privateSceneLayer.items[0]?.trigger?.venueSlug, 'shellbucks');
     assert.equal(result.artifactPaths.jsonPath, expectedPaths.jsonPath);
     assert.equal(storedJson.targetDate, '2026-03-19');
     assert.match(storedMarkdown, /## Private Community Recall/);
