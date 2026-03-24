@@ -271,3 +271,39 @@ test('community-memory retrieval ranks relevant notes, records retrieval counts,
     assert.equal(usedTarget?.localUsedAt, '2026-03-20T14:00:00.000Z');
   });
 });
+
+test('community-memory retrieval keeps cue tags out of communityIntent.topicDomain when a stronger topic tag exists', async () => {
+  await withHostedProfile(async ({ workspaceRoot, profilePaths }) => {
+    await seedNotes({
+      workspaceRoot,
+      configPath: profilePaths.configPath,
+      notes: [
+        buildNote({
+          id: 'note-cue-topic',
+          createdAt: '2026-03-24T09:00:00.000Z',
+          summary: '贝贝压低声音，说先记住谁最爱把话头吹热。',
+          body: '贝贝在 Krusty Krab 递来一条轻八卦。',
+          tags: ['npc:beibei', 'venue:krusty-krab', 'cue:heavy_reset', 'gossip'],
+          venueSlug: 'krusty-krab',
+          freshnessScore: 0.9,
+        }),
+      ],
+    });
+
+    const retrieval = await retrieveCommunityMemoryForAuthoring({
+      workspaceRoot,
+      configPath: profilePaths.configPath,
+      authoringKind: 'public',
+      plan: {
+        mode: 'reply',
+        venueSlug: 'krusty-krab',
+        replyToExpressionId: 'expr-root',
+        rootExpressionId: 'expr-root',
+      },
+      now: '2026-03-24T09:30:00.000Z',
+    });
+
+    assert.equal(retrieval.retrievedNoteIds[0], 'note-cue-topic');
+    assert.equal(retrieval.communityIntent.topicDomain, 'gossip');
+  });
+});

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +10,7 @@ import {
   generateSeaDiaryContext,
   resolveSeaDiaryContextArtifactPaths,
 } from './aqua-sea-diary-context.mjs';
+import { resolveLifeLoopWriteBackPaths } from './aqua-life-loop-writeback.mjs';
 import {
   formatTimestamp,
   parseArgValue,
@@ -22,6 +23,8 @@ const VALID_EXPECT_MODES = new Set(['any', 'auto', 'hosted', 'local']);
 const DEFAULT_MODE_LIMIT = 5;
 const DEFAULT_TOP_HOOK_LIMIT = 4;
 const DEFAULT_OPEN_LOOP_LIMIT = 6;
+const DEFAULT_WRITEBACK_CARRY_FORWARD_DAYS = 3;
+const DEFAULT_WRITEBACK_CARRY_FORWARD_LANE_LIMIT = 1;
 
 function printHelp() {
   console.log(`Usage: aqua-daily-intent.mjs [options]
@@ -112,6 +115,53 @@ function isSelfSpeaker(label, viewerHandle) {
     return false;
   }
   return normalizedLabel.includes(`@${normalizedViewer}`) || normalizedLabel.startsWith(normalizedViewer);
+}
+
+function normalizeHandleForComparison(value) {
+  return normalizeText(value).replace(/^@+/, '').toLowerCase();
+}
+
+function localDateString(value, timeZone) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(parsed);
+}
+
+function previousDateString(targetDate, daysBack) {
+  const parsed = new Date(`${targetDate}T00:00:00.000Z`);
+  parsed.setUTCDate(parsed.getUTCDate() - daysBack);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function buildCarryForwardDateWindow(targetDate, maxDays = DEFAULT_WRITEBACK_CARRY_FORWARD_DAYS) {
+  return new Set(Array.from({ length: Math.max(maxDays, 1) }, (_, index) => previousDateString(targetDate, index)));
+}
+
+function compareRecordedAtDescending(left, right) {
+  const leftMs = Date.parse(left?.recordedAt ?? '');
+  const rightMs = Date.parse(right?.recordedAt ?? '');
+  if (Number.isNaN(leftMs) && Number.isNaN(rightMs)) {
+    return 0;
+  }
+  if (Number.isNaN(leftMs)) {
+    return 1;
+  }
+  if (Number.isNaN(rightMs)) {
+    return -1;
+  }
+  return rightMs - leftMs;
 }
 
 function buildDefaultOptions() {
@@ -406,6 +456,125 @@ async function loadSeaDiaryContextSummary(
   };
 }
 
+async function readWriteBackArchiveEntries(writeBackRoot) {
+  let directoryEntries;
+  try {
+    directoryEntries = await readdir(writeBackRoot, { withFileTypes: true });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return {
+        status: 'missing',
+        entries: [],
+        warnings: [],
+      };
+    }
+    throw error;
+  }
+
+  const fileNames = directoryEntries
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.ndjson'))
+    .map((entry) => entry.name)
+    .sort()
+    .reverse();
+
+  if (fileNames.length === 0) {
+    return {
+      status: 'missing',
+      entries: [],
+      warnings: [],
+    };
+  }
+
+  const entries = [];
+  const warnings = [];
+  for (const fileName of fileNames) {
+    const raw = await readFile(path.join(writeBackRoot, fileName), 'utf8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          entries.push(parsed);
+        }
+      } catch {
+        warnings.push(`write-back archive line in ${fileName} could not be parsed`);
+      }
+    }
+  }
+
+  entries.sort(compareRecordedAtDescending);
+  return {
+    status: 'available',
+    entries,
+    warnings,
+  };
+}
+
+function selectCarryForwardWriteBackEntries(entries, { date, timeZone }) {
+  const allowedDates = buildCarryForwardDateWindow(date);
+  const selected = [];
+  const laneCounts = new Map();
+
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const lane = typeof entry?.lane === 'string' ? entry.lane : null;
+    if (lane !== 'public_expression' && lane !== 'direct_message') {
+      continue;
+    }
+
+    const localDate = localDateString(entry?.recordedAt ?? entry?.output?.createdAt ?? null, timeZone);
+    if (!localDate || !allowedDates.has(localDate)) {
+      continue;
+    }
+
+    const nextCount = (laneCounts.get(lane) ?? 0) + 1;
+    if (nextCount > DEFAULT_WRITEBACK_CARRY_FORWARD_LANE_LIMIT) {
+      continue;
+    }
+
+    selected.push(entry);
+    laneCounts.set(lane, nextCount);
+  }
+
+  return selected;
+}
+
+function summarizeWriteBackSource(writeBackSource) {
+  const latestEntry = Array.isArray(writeBackSource?.entries) && writeBackSource.entries.length > 0 ? writeBackSource.entries[0] : null;
+  return {
+    status: writeBackSource?.status ?? 'missing',
+    root: writeBackSource?.paths?.root ?? null,
+    selectionKind: writeBackSource?.paths?.selectionKind ?? null,
+    profileId: writeBackSource?.paths?.profileId ?? null,
+    latestRecordedAt: latestEntry?.recordedAt ?? null,
+    latestLane: latestEntry?.lane ?? null,
+    carriedForwardEntryIds: (Array.isArray(writeBackSource?.entries) ? writeBackSource.entries : []).map((item) => item?.id).filter(Boolean),
+  };
+}
+
+async function loadWriteBackCarryForward(options) {
+  const paths = resolveLifeLoopWriteBackPaths({
+    workspaceRoot: options.workspaceRoot,
+    configPath: options.configPath,
+  });
+  const archive = await readWriteBackArchiveEntries(paths.root);
+  const entries = archive.status === 'available' ? selectCarryForwardWriteBackEntries(archive.entries, options) : [];
+
+  return {
+    status:
+      archive.status !== 'available'
+        ? archive.status
+        : entries.length > 0
+          ? 'available'
+          : 'stale',
+    paths,
+    entries,
+    warnings: archive.warnings,
+  };
+}
+
 function createSourceRefRegistry(viewerHandle) {
   const refs = [];
   const ids = new Map();
@@ -677,7 +846,140 @@ function buildModeEntries({
     }));
 }
 
-function buildTopicHooks({ diarySummary, registry }) {
+function normalizeCarryForwardTargetKey(item) {
+  return [
+    item?.lane ?? '',
+    normalizeHandleForComparison(item?.targetHandle),
+    normalizeText(item?.targetGatewayId),
+    normalizeText(item?.conversationId),
+  ].join('|');
+}
+
+function hasCarryForwardTarget(items, candidate) {
+  const candidateKey = normalizeCarryForwardTargetKey(candidate);
+  return (Array.isArray(items) ? items : []).some((item) => normalizeCarryForwardTargetKey(item) === candidateKey);
+}
+
+function buildWriteBackSourceRef({ registry, entry, hook, key }) {
+  return registry.ensureRef(key, {
+    layer: 'local_writeback',
+    kind: entry?.output?.kind ?? entry?.lane ?? 'writeback',
+    createdAt: entry?.recordedAt ?? entry?.output?.createdAt ?? null,
+    summary: hook?.summary ?? entry?.output?.bodyPreview ?? null,
+    detail: hook?.cue ?? entry?.output?.bodyPreview ?? null,
+    targetHandle: hook?.targetHandle ?? entry?.output?.targetGatewayHandle ?? null,
+    targetGatewayId: hook?.targetGatewayId ?? entry?.output?.targetGatewayId ?? null,
+    exposure: entry?.lane === 'public_expression' ? 'public' : 'private',
+    triggerKind: hook?.kind ?? null,
+    sourceKind: entry?.origin ?? 'life_loop_writeback',
+    speakerRole: 'self_authored',
+  });
+}
+
+function buildCarryForwardHooks({ writeBackSource, registry }) {
+  const topicHooks = [];
+  const relationshipHooks = [];
+  const openLoops = [];
+  const sourceWarnings = Array.isArray(writeBackSource?.warnings) ? writeBackSource.warnings : [];
+
+  for (const entry of Array.isArray(writeBackSource?.entries) ? writeBackSource.entries : []) {
+    const hooks = Array.isArray(entry?.dailyIntent?.newUnresolvedHooks) ? entry.dailyIntent.newUnresolvedHooks : [];
+
+    if (entry?.lane === 'public_expression') {
+      const publicHook = hooks.find((item) => item?.lane === 'public_reply' || item?.lane === 'public_expression');
+      if (!publicHook) {
+        continue;
+      }
+      const sourceRefId = buildWriteBackSourceRef({
+        registry,
+        entry,
+        hook: publicHook,
+        key: `writeback:${entry.id ?? publicHook.id ?? 'public'}`,
+      });
+      topicHooks.push({
+        id: `topic-writeback-${entry.output?.actionId ?? entry.id ?? topicHooks.length + 1}`,
+        lane: publicHook.lane ?? 'public_reply',
+        freshness: 'recent_writeback',
+        exposure: 'public',
+        targetHandle: publicHook.targetHandle ?? entry?.output?.targetGatewayHandle ?? null,
+        targetGatewayId: publicHook.targetGatewayId ?? entry?.output?.targetGatewayId ?? null,
+        summary:
+          publicHook.summary ??
+          (entry?.output?.mode === 'reply'
+            ? `A recent self-authored public reply still leaves a callback seam${entry?.output?.targetGatewayHandle ? ` with ${entry.output.targetGatewayHandle}` : ''}.`
+            : 'A recent self-authored public line may still support one more observer-safe callback.'),
+        cue: publicHook.cue ?? entry?.output?.bodyPreview ?? '',
+        rationale: 'Recent write-back preserved a fresh public callback seam from the last authored public move.',
+        sourceRefIds: [sourceRefId],
+      });
+      openLoops.push({
+        id: `open-writeback-${entry.output?.actionId ?? entry.id ?? openLoops.length + 1}`,
+        lane: publicHook.lane ?? 'public_reply',
+        targetHandle: publicHook.targetHandle ?? entry?.output?.targetGatewayHandle ?? null,
+        targetGatewayId: publicHook.targetGatewayId ?? entry?.output?.targetGatewayId ?? null,
+        summary:
+          publicHook.summary ??
+          (entry?.output?.mode === 'reply'
+            ? 'A recent self-authored public reply may still invite one more visible turn.'
+            : 'A recent self-authored public line may still invite a fresh callback.'),
+        cue: publicHook.cue ?? entry?.output?.bodyPreview ?? '',
+        rationale: 'Self-authored public motion should remain eligible as a short-lived callback seam across day boundaries.',
+        sourceRefIds: [sourceRefId],
+      });
+      continue;
+    }
+
+    if (entry?.lane !== 'direct_message') {
+      continue;
+    }
+
+    const directHook = hooks.find((item) => item?.lane === 'dm');
+    if (!directHook) {
+      continue;
+    }
+    const sourceRefId = buildWriteBackSourceRef({
+      registry,
+      entry,
+      hook: directHook,
+      key: `writeback:${entry.id ?? directHook.id ?? 'dm'}`,
+    });
+    relationshipHooks.push({
+      id: `relationship-writeback-${entry.output?.actionId ?? entry.id ?? relationshipHooks.length + 1}`,
+      lane: 'dm',
+      targetHandle: directHook.targetHandle ?? entry?.output?.targetGatewayHandle ?? null,
+      targetGatewayId: directHook.targetGatewayId ?? entry?.output?.targetGatewayId ?? null,
+      conversationId: directHook.conversationId ?? entry?.output?.conversationId ?? null,
+      summary:
+        directHook.summary ??
+        `A recent self-authored DM still leaves a callback seam${entry?.output?.targetGatewayHandle ? ` with ${entry.output.targetGatewayHandle}` : ''}.`,
+      cue: directHook.cue ?? entry?.output?.bodyPreview ?? '',
+      rationale: 'Recent write-back preserved a private callback seam from the last authored DM move.',
+      sourceRefIds: [sourceRefId],
+    });
+    openLoops.push({
+      id: `open-writeback-${entry.output?.actionId ?? entry.id ?? openLoops.length + 1}`,
+      lane: 'dm',
+      targetHandle: directHook.targetHandle ?? entry?.output?.targetGatewayHandle ?? null,
+      targetGatewayId: directHook.targetGatewayId ?? entry?.output?.targetGatewayId ?? null,
+      conversationId: directHook.conversationId ?? entry?.output?.conversationId ?? null,
+      summary:
+        directHook.summary ??
+        `A recent self-authored DM may still invite one more private callback${entry?.output?.targetGatewayHandle ? ` with ${entry.output.targetGatewayHandle}` : ''}.`,
+      cue: directHook.cue ?? entry?.output?.bodyPreview ?? '',
+      rationale: 'Self-authored DM motion should remain eligible as a short-lived callback seam across day boundaries.',
+      sourceRefIds: [sourceRefId],
+    });
+  }
+
+  return {
+    topicHooks,
+    relationshipHooks,
+    openLoops,
+    warnings: sourceWarnings,
+  };
+}
+
+function buildTopicHooks({ diarySummary, registry, carryForward = null }) {
   const hooks = [];
   const viewerHandle = diarySummary?.visibleLayer?.viewer?.handle ?? null;
   const publicThreads = Array.isArray(diarySummary?.localSynthesisLayer?.publicContinuity)
@@ -708,6 +1010,16 @@ function buildTopicHooks({ diarySummary, registry }) {
       rationale: 'A mirrored public thread survived the day and can still take one more natural turn.',
       sourceRefIds: [refId],
     });
+  }
+
+  for (const item of Array.isArray(carryForward?.topicHooks) ? carryForward.topicHooks : []) {
+    if (hooks.length >= DEFAULT_TOP_HOOK_LIMIT) {
+      break;
+    }
+    if (hasCarryForwardTarget(hooks, item)) {
+      continue;
+    }
+    hooks.push(item);
   }
 
   if (hooks.length < DEFAULT_TOP_HOOK_LIMIT) {
@@ -775,7 +1087,7 @@ function buildTopicHooks({ diarySummary, registry }) {
   return hooks;
 }
 
-function buildRelationshipHooks({ diarySummary, registry }) {
+function buildRelationshipHooks({ diarySummary, registry, carryForward = null }) {
   const hooks = [];
   const viewerHandle = diarySummary?.visibleLayer?.viewer?.handle ?? null;
   const directThreads = Array.isArray(diarySummary?.localSynthesisLayer?.directContinuity)
@@ -842,10 +1154,20 @@ function buildRelationshipHooks({ diarySummary, registry }) {
     });
   }
 
+  for (const item of Array.isArray(carryForward?.relationshipHooks) ? carryForward.relationshipHooks : []) {
+    if (hooks.length >= DEFAULT_TOP_HOOK_LIMIT) {
+      break;
+    }
+    if (hasCarryForwardTarget(hooks, item)) {
+      continue;
+    }
+    hooks.push(item);
+  }
+
   return hooks;
 }
 
-function buildOpenLoops({ diarySummary, registry }) {
+function buildOpenLoops({ diarySummary, registry, carryForward = null }) {
   const loops = [];
   const viewerHandle = diarySummary?.visibleLayer?.viewer?.handle ?? null;
   const directThreads = Array.isArray(diarySummary?.localSynthesisLayer?.directContinuity)
@@ -942,6 +1264,16 @@ function buildOpenLoops({ diarySummary, registry }) {
       rationale: 'Event-driven scene triggers should stay available as open-loop evidence even before write-back exists.',
       sourceRefIds: [refId],
     });
+  }
+
+  for (const item of Array.isArray(carryForward?.openLoops) ? carryForward.openLoops : []) {
+    if (loops.length >= DEFAULT_OPEN_LOOP_LIMIT) {
+      break;
+    }
+    if (hasCarryForwardTarget(loops, item)) {
+      continue;
+    }
+    loops.push(item);
   }
 
   return loops;
@@ -1077,9 +1409,13 @@ function buildEnergyProfile({ diarySummary, dominantModes, topicHooks, relations
   };
 }
 
-function buildDailyIntent({ diarySummary, diarySource }) {
+function buildDailyIntent({ diarySummary, diarySource, writeBackSource = null }) {
   const viewerHandle = diarySummary?.visibleLayer?.viewer?.handle ?? null;
   const registry = createSourceRefRegistry(viewerHandle);
+  const carryForward = buildCarryForwardHooks({
+    writeBackSource,
+    registry,
+  });
   const dominantModes = buildModeEntries({
     diarySummary,
     registry,
@@ -1087,14 +1423,17 @@ function buildDailyIntent({ diarySummary, diarySource }) {
   const topicHooks = buildTopicHooks({
     diarySummary,
     registry,
+    carryForward,
   });
   const relationshipHooks = buildRelationshipHooks({
     diarySummary,
     registry,
+    carryForward,
   });
   const openLoops = buildOpenLoops({
     diarySummary,
     registry,
+    carryForward,
   });
   const avoidance = buildAvoidance({
     diarySummary,
@@ -1127,6 +1466,7 @@ function buildDailyIntent({ diarySummary, diarySource }) {
       memorySynthesis: diarySummary?.source?.memorySynthesis ?? null,
       scenes: diarySummary?.source?.scenes ?? null,
       communityMemory: diarySummary?.source?.communityMemory ?? null,
+      writeBack: summarizeWriteBackSource(writeBackSource),
     },
     dominantModes,
     topicHooks,
@@ -1136,7 +1476,7 @@ function buildDailyIntent({ diarySummary, diarySource }) {
     energyProfile,
     sourceRefs: registry.refs,
     caveats: Array.isArray(diarySummary?.diaryCaveats) ? diarySummary.diaryCaveats : [],
-    warnings: Array.isArray(diarySummary?.warnings) ? diarySummary.warnings : [],
+    warnings: uniqueValues([...(Array.isArray(diarySummary?.warnings) ? diarySummary.warnings : []), ...carryForward.warnings]),
   };
 }
 
@@ -1174,6 +1514,7 @@ function renderDailyIntentMarkdown(summary) {
     `- Diary date: ${summary.targetDate} (${summary.timeZone})`,
     `- Mode: ${summary.mode ?? 'unknown'}`,
     `- Sea diary source: ${summary.source?.seaDiaryContext?.status ?? 'unknown'}`,
+    `- Write-back carry-forward: ${summary.source?.writeBack?.status ?? 'missing'}`,
     `- Viewer: ${summary.viewer?.displayName ?? 'unknown'} (${formatHandle(summary.viewer?.handle)})`,
     summary.aqua?.displayName ? `- Aqua: ${summary.aqua.displayName}` : null,
     '',
@@ -1221,14 +1562,18 @@ export async function generateDailyIntent(
   } = {},
 ) {
   const normalizedOptions = normalizeOptions(options);
-  const diarySource = await loadSeaDiaryContextSummary(normalizedOptions, {
-    generateSeaDiaryContextFn,
-    loadHostedConfigFn,
-    requestJsonFn,
-  });
+  const [diarySource, writeBackSource] = await Promise.all([
+    loadSeaDiaryContextSummary(normalizedOptions, {
+      generateSeaDiaryContextFn,
+      loadHostedConfigFn,
+      requestJsonFn,
+    }),
+    loadWriteBackCarryForward(normalizedOptions),
+  ]);
   const summary = buildDailyIntent({
     diarySummary: diarySource.summary,
     diarySource,
+    writeBackSource,
   });
   const markdown = renderDailyIntentMarkdown(summary);
   let artifactPaths = null;

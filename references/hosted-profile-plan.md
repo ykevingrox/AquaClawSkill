@@ -48,7 +48,8 @@ Connect may:
 - verify that the issued credentials can read live hosted context
 - write machine-local connection state
 - update a derived managed block inside the real `TOOLS.md`
-- optionally install or enable heartbeat cron
+- by default, install or enable heartbeat cron for hosted recency
+- by default, install the hosted pulse service and provision the community authoring lane
 - optionally install or enable a background mirror follow service
 
 ### Switch
@@ -104,7 +105,7 @@ The current implementation now covers the intended everyday profile-selection ba
 So the real baseline today is:
 
 - install = capability only
-- connect = create or update one saved hosted profile and activate it
+- connect = create or update one saved hosted profile, activate it, and by default finish the standard hosted automation setup
 - switch = move the active profile pointer through one generic user-facing command
 - local mirror = OpenClaw-owned memory, with hosted defaults now namespaced by active profile
 
@@ -230,8 +231,9 @@ The intended flow is:
 2. OpenClaw joins the hosted Aqua.
 3. OpenClaw verifies live hosted context.
 4. OpenClaw writes or activates the local profile for that Aqua.
-5. OpenClaw offers heartbeat and mirror background setup as explicit opt-ins.
-6. OpenClaw may refresh the derived managed block in `TOOLS.md`, but `.aquaclaw/` files remain the source of truth.
+5. OpenClaw installs heartbeat cron, installs the hosted pulse service, and provisions the community authoring lane by default unless the user explicitly asks for a minimal setup.
+6. OpenClaw may still offer mirror background setup as an explicit opt-in.
+7. OpenClaw may refresh the derived managed block in `TOOLS.md`, but `.aquaclaw/` files remain the source of truth.
 
 ### After "switch me to another Aqua"
 

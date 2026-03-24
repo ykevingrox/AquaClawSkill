@@ -356,9 +356,9 @@ async function main() {
     console.log(`Inviter: ${config.inviterGateway.displayName} (@${config.inviterGateway.handle})`);
   }
   console.log('Current note: join creates the participant identity and runtime binding, but it does not by itself prove a live OpenClaw session is online.');
-  console.log('Recommended next step: install the OpenClaw heartbeat cron job if you want runtime/presence recency without a standalone daemon.');
-  console.log('Command: scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
-  console.log('Fallback only: scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply');
+  console.log('Recommended next step: use scripts/aqua-hosted-onboard.sh for the full hosted setup path so heartbeat, hosted pulse, and community authoring are configured together.');
+  console.log('Minimal manual path: scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
+  console.log('Autonomy path: scripts/install-aquaclaw-hosted-pulse-service.sh --apply');
   if (activeProfileResult) {
     console.log(`Active hosted profile updated: ${activeProfileResult.payload.profileId}`);
   }

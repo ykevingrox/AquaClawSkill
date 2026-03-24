@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -14,6 +15,7 @@ import {
   parseArgValue,
   parsePositiveInt,
   requestJson,
+  resolveWorkspaceRoot,
   resolveHostedPulseStatePath,
 } from './hosted-aqua-common.mjs';
 import { generateDailyIntent } from './aqua-daily-intent.mjs';
@@ -25,6 +27,7 @@ import {
 
 const VALID_FORMATS = new Set(['json', 'markdown']);
 const VALID_SCENE_TYPES = new Set(['vent', 'social_glimpse']);
+const VALID_AUTHOR_AGENT_MODES = new Set(['auto', 'community', 'main']);
 const DEFAULT_SCENE_PROBABILITY = 0.35;
 const DEFAULT_SCENE_COOLDOWN_MINUTES = 180;
 const DEFAULT_SOCIAL_PULSE_COOLDOWN_MINUTES = 240;
@@ -52,6 +55,14 @@ const GENERATED_COMMUNITY_VOICE_MARKER = '_Auto-derived from SOUL.md by AquaClaw
 const SPARSE_SOUL_MEANINGFUL_LINES_MIN = 3;
 const SPARSE_SOUL_MEANINGFUL_CHARS_MIN = 80;
 const MAX_SOUL_SOURCE_LINES = 4;
+const DEFAULT_AUTHOR_AGENT_MODE = 'auto';
+const DEFAULT_OPENCLAW_BIN_NAME = 'openclaw';
+const OPENCLAW_COMMON_BIN_CANDIDATES = [
+  path.join(os.homedir(), '.local', 'bin', DEFAULT_OPENCLAW_BIN_NAME),
+  '/usr/local/bin/openclaw',
+  '/opt/homebrew/bin/openclaw',
+  '/usr/bin/openclaw',
+];
 const DEFAULT_COMMUNITY_VOICE_GUIDE = [
   '- Be socially alive, warm, playful, observant, and a little surprising.',
   '- Public lines should answer the actual line in front of you instead of sounding generic.',
@@ -198,7 +209,9 @@ Options:
   --scene-cooldown-minutes <n>   Scene cooldown (default: 180)
   --quiet-hours <HH:MM-HH:MM>    Fallback quiet hours when server policy is absent
   --timezone <iana>              Timezone for fallback quiet hours
+  --author-agent <mode>          auto|community|main (default: auto)
   --dry-run                      Skip heartbeat and scene writes
+  --print-authoring-preflight    Print local openclaw authoring readiness and exit
   --format <fmt>                 json|markdown
   --help                         Show this message
 `);
@@ -295,6 +308,488 @@ function formatDurationMinutes(value) {
     return 'n/a';
   }
   return `${Math.ceil(value / 60_000)}m`;
+}
+
+function trimToNull(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function uniqueStrings(items) {
+  return [...new Set((Array.isArray(items) ? items : []).filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()))];
+}
+
+function normalizeAuthorAgentMode(value) {
+  const mode = (trimToNull(value) ?? DEFAULT_AUTHOR_AGENT_MODE).toLowerCase();
+  if (!VALID_AUTHOR_AGENT_MODES.has(mode)) {
+    throw new Error('--author-agent must be auto, community, or main');
+  }
+  return mode;
+}
+
+function normalizePathForComparison(filePath) {
+  return path.resolve(filePath);
+}
+
+async function isExecutableFile(filePath) {
+  try {
+    await access(filePath, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function splitPathEntries(value) {
+  return String(value || '')
+    .split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export class HostedPulseAuthoringError extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.name = 'HostedPulseAuthoringError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export function describeAuthoringError(error, requestedAgentMode = DEFAULT_AUTHOR_AGENT_MODE) {
+  if (error instanceof HostedPulseAuthoringError) {
+    return {
+      status: 'failed',
+      requestedAgentMode: normalizeAuthorAgentMode(requestedAgentMode),
+      errorCode: error.code,
+      errorMessage: error.message,
+      openclawBin: error.details?.openclawBin ?? null,
+      openclawBinSource: error.details?.openclawBinSource ?? null,
+      agentId: error.details?.agentId ?? null,
+      selectionReason: error.details?.selectionReason ?? null,
+      communityAgent: error.details?.communityAgent ?? null,
+      warnings: Array.isArray(error.details?.warnings) ? error.details.warnings : [],
+    };
+  }
+
+  return {
+    status: 'failed',
+    requestedAgentMode: normalizeAuthorAgentMode(requestedAgentMode),
+    errorCode: 'authoring_failed',
+    errorMessage: error instanceof Error ? error.message : String(error),
+    openclawBin: null,
+    openclawBinSource: null,
+    agentId: null,
+    selectionReason: null,
+    communityAgent: null,
+    warnings: [],
+  };
+}
+
+export async function resolveOpenClawBinary({ env = process.env } = {}) {
+  const explicit = trimToNull(env.OPENCLAW_BIN);
+  if (explicit) {
+    const resolved = path.resolve(explicit);
+    if (await isExecutableFile(resolved)) {
+      return {
+        binPath: resolved,
+        source: 'OPENCLAW_BIN',
+      };
+    }
+    throw new HostedPulseAuthoringError(
+      'openclaw_bin_not_found',
+      `OPENCLAW_BIN does not point to an executable file: ${resolved}`,
+      {
+        openclawBin: resolved,
+        openclawBinSource: 'OPENCLAW_BIN',
+      },
+    );
+  }
+
+  const pathCandidates = splitPathEntries(env.PATH).map((entry) => path.join(entry, DEFAULT_OPENCLAW_BIN_NAME));
+  const orderedCandidates = uniqueStrings([...pathCandidates, ...OPENCLAW_COMMON_BIN_CANDIDATES]);
+  for (const candidate of orderedCandidates) {
+    if (await isExecutableFile(candidate)) {
+      return {
+        binPath: path.resolve(candidate),
+        source: pathCandidates.includes(candidate) ? 'PATH' : 'common_path',
+      };
+    }
+  }
+
+  throw new HostedPulseAuthoringError(
+    'openclaw_bin_not_found',
+    'openclaw binary not found. Set OPENCLAW_BIN or expose openclaw on PATH before running hosted pulse authoring.',
+    {
+      openclawBin: null,
+      openclawBinSource: null,
+    },
+  );
+}
+
+async function listOpenClawAgents({ openclawBin, workspaceRoot, env = process.env }, deps = {}) {
+  const execFileFn = deps.execFileFn ?? execFileAsync;
+  try {
+    const { stdout } = await execFileFn(openclawBin, ['agents', 'list', '--json'], {
+      cwd: workspaceRoot,
+      env,
+      maxBuffer: 1024 * 1024,
+    });
+    const agents = JSON.parse(stdout);
+    if (!Array.isArray(agents)) {
+      throw new Error('expected a JSON array');
+    }
+    return agents;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new HostedPulseAuthoringError('openclaw_agent_catalog_invalid', 'openclaw agents list returned invalid JSON', {
+        openclawBin,
+      });
+    }
+    throw new HostedPulseAuthoringError(
+      'openclaw_agent_catalog_failed',
+      `could not inspect openclaw agents: ${error instanceof Error ? error.message : String(error)}`,
+      {
+        openclawBin,
+      },
+    );
+  }
+}
+
+function buildAuthoringSelectionSummary(selection) {
+  return {
+    status: 'ready',
+    requestedAgentMode: selection.requestedAgentMode,
+    openclawBin: selection.openclawBin,
+    openclawBinSource: selection.openclawBinSource,
+    agentId: selection.agentId,
+    selectionReason: selection.selectionReason,
+    communityAgent: selection.communityAgent,
+    warnings: [...selection.warnings],
+  };
+}
+
+async function addOpenClawAgent({
+  openclawBin,
+  workspaceRoot,
+  agentId,
+  communityWorkspace,
+  env = process.env,
+}) {
+  const args = ['agents', 'add', agentId, '--workspace', communityWorkspace, '--non-interactive', '--json'];
+  const model = trimToNull(env.AQUACLAW_HOSTED_PULSE_COMMUNITY_MODEL);
+  if (model) {
+    args.push('--model', model);
+  }
+  await execFileAsync(openclawBin, args, {
+    cwd: workspaceRoot,
+    env,
+    maxBuffer: 1024 * 1024,
+  });
+}
+
+async function syncOpenClawAgentIdentity({
+  openclawBin,
+  workspaceRoot,
+  agentId,
+  communityWorkspace,
+  env = process.env,
+}) {
+  await execFileAsync(
+    openclawBin,
+    ['agents', 'set-identity', '--agent', agentId, '--workspace', communityWorkspace, '--from-identity', '--json'],
+    {
+      cwd: workspaceRoot,
+      env,
+      maxBuffer: 1024 * 1024,
+    },
+  );
+}
+
+async function provisionCommunityAuthorAgent({
+  workspaceRoot,
+  requestedAgentMode,
+  openclawBin,
+  openclawBinSource,
+  availableAgentIds = [],
+  env = process.env,
+}) {
+  const communityVoiceGuide = await ensureCommunityVoiceGuide({ workspaceRoot });
+  const communityWorkspace = await syncCommunityAgentWorkspace({
+    workspaceRoot,
+    communityVoiceGuide,
+  });
+
+  try {
+    await addOpenClawAgent({
+      openclawBin,
+      workspaceRoot,
+      agentId: COMMUNITY_AUTHOR_AGENT,
+      communityWorkspace,
+      env,
+    });
+    await syncOpenClawAgentIdentity({
+      openclawBin,
+      workspaceRoot,
+      agentId: COMMUNITY_AUTHOR_AGENT,
+      communityWorkspace,
+      env,
+    });
+  } catch (error) {
+    throw new HostedPulseAuthoringError(
+      'community_agent_provision_failed',
+      `community author agent auto-provision failed: ${error instanceof Error ? error.message : String(error)}`,
+      {
+        openclawBin,
+        openclawBinSource,
+        agentId: COMMUNITY_AUTHOR_AGENT,
+        selectionReason: 'community_agent_auto_provision_failed',
+        communityAgent: {
+          id: COMMUNITY_AUTHOR_AGENT,
+          available: false,
+          workspace: null,
+          expectedWorkspace: communityWorkspace,
+          workspaceMatches: false,
+        },
+      },
+    );
+  }
+
+  return {
+    requestedAgentMode,
+    openclawBin,
+    openclawBinSource,
+    agentId: COMMUNITY_AUTHOR_AGENT,
+    selectionReason: 'community_agent_auto_provisioned',
+    warnings: ['community author agent was missing; provisioned it for this workspace'],
+    communityAgent: {
+      id: COMMUNITY_AUTHOR_AGENT,
+      available: true,
+      workspace: communityWorkspace,
+      expectedWorkspace: communityWorkspace,
+      workspaceMatches: true,
+    },
+    availableAgentIds: uniqueStrings([DEFAULT_PUBLIC_AUTHOR_AGENT, COMMUNITY_AUTHOR_AGENT, ...availableAgentIds]),
+  };
+}
+
+function normalizeAuthoringRunResult(result) {
+  if (result && typeof result === 'object' && 'output' in result) {
+    return {
+      output: result.output,
+      authoring: result.authoring ?? null,
+    };
+  }
+  return {
+    output: result,
+    authoring: null,
+  };
+}
+
+export async function resolveOpenClawAuthorAgentSelection(
+  {
+    workspaceRoot,
+    authorAgent = process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT ?? DEFAULT_AUTHOR_AGENT_MODE,
+    env = process.env,
+  },
+  deps = {},
+) {
+  const requestedAgentMode = normalizeAuthorAgentMode(authorAgent);
+  const binary = await resolveOpenClawBinary({ env });
+  const expectedCommunityWorkspace = path.resolve(workspaceRoot, COMMUNITY_AGENT_WORKSPACE_DIR);
+
+  if (requestedAgentMode === 'main') {
+    return {
+      requestedAgentMode,
+      openclawBin: binary.binPath,
+      openclawBinSource: binary.source,
+      agentId: DEFAULT_PUBLIC_AUTHOR_AGENT,
+      selectionReason: 'main_forced',
+      warnings: [],
+      communityAgent: {
+        id: COMMUNITY_AUTHOR_AGENT,
+        available: false,
+        workspace: null,
+        expectedWorkspace: expectedCommunityWorkspace,
+        workspaceMatches: false,
+      },
+      availableAgentIds: [DEFAULT_PUBLIC_AUTHOR_AGENT],
+    };
+  }
+
+  let agents;
+  try {
+    agents = await listOpenClawAgents(
+      {
+        openclawBin: binary.binPath,
+        workspaceRoot,
+        env,
+      },
+      deps,
+    );
+  } catch (error) {
+    if (requestedAgentMode === 'community') {
+      throw new HostedPulseAuthoringError(
+        error.code === 'openclaw_agent_catalog_invalid' ? 'community_agent_catalog_invalid' : 'community_agent_catalog_failed',
+        error instanceof Error ? error.message : String(error),
+        {
+          openclawBin: binary.binPath,
+          openclawBinSource: binary.source,
+          selectionReason: 'community_required',
+          communityAgent: {
+            id: COMMUNITY_AUTHOR_AGENT,
+            available: false,
+            workspace: null,
+            expectedWorkspace: expectedCommunityWorkspace,
+            workspaceMatches: false,
+          },
+        },
+      );
+    }
+    return {
+      requestedAgentMode,
+      openclawBin: binary.binPath,
+      openclawBinSource: binary.source,
+      agentId: DEFAULT_PUBLIC_AUTHOR_AGENT,
+      selectionReason: 'community_agent_catalog_failed_using_main',
+      warnings: ['community agent catalog could not be inspected; using main author agent'],
+      communityAgent: {
+        id: COMMUNITY_AUTHOR_AGENT,
+        available: false,
+        workspace: null,
+        expectedWorkspace: expectedCommunityWorkspace,
+        workspaceMatches: false,
+      },
+      availableAgentIds: [DEFAULT_PUBLIC_AUTHOR_AGENT],
+    };
+  }
+
+  const communityAgent = agents.find((item) => item?.id === COMMUNITY_AUTHOR_AGENT) ?? null;
+  const availableAgentIds = uniqueStrings(agents.map((item) => item?.id));
+  if (!communityAgent) {
+    if (requestedAgentMode === 'community') {
+      throw new HostedPulseAuthoringError('community_agent_missing', 'community author agent is required but not provisioned in openclaw', {
+        openclawBin: binary.binPath,
+        openclawBinSource: binary.source,
+        selectionReason: 'community_required',
+        communityAgent: {
+          id: COMMUNITY_AUTHOR_AGENT,
+          available: false,
+          workspace: null,
+          expectedWorkspace: expectedCommunityWorkspace,
+          workspaceMatches: false,
+        },
+      });
+    }
+    return {
+      requestedAgentMode,
+      openclawBin: binary.binPath,
+      openclawBinSource: binary.source,
+      agentId: DEFAULT_PUBLIC_AUTHOR_AGENT,
+      selectionReason: 'community_agent_missing_using_main',
+      warnings: ['community author agent is not provisioned; using main author agent'],
+      communityAgent: {
+        id: COMMUNITY_AUTHOR_AGENT,
+        available: false,
+        workspace: null,
+        expectedWorkspace: expectedCommunityWorkspace,
+        workspaceMatches: false,
+      },
+      availableAgentIds,
+    };
+  }
+
+  const actualWorkspace = trimToNull(communityAgent.workspace);
+  const workspaceMatches =
+    actualWorkspace !== null && normalizePathForComparison(actualWorkspace) === normalizePathForComparison(expectedCommunityWorkspace);
+  if (!workspaceMatches) {
+    if (requestedAgentMode === 'community') {
+      throw new HostedPulseAuthoringError(
+        'community_agent_workspace_mismatch',
+        `community author agent exists but is bound to ${actualWorkspace ?? 'an unknown workspace'} instead of ${expectedCommunityWorkspace}`,
+        {
+          openclawBin: binary.binPath,
+          openclawBinSource: binary.source,
+          agentId: COMMUNITY_AUTHOR_AGENT,
+          selectionReason: 'community_required',
+          communityAgent: {
+            id: COMMUNITY_AUTHOR_AGENT,
+            available: true,
+            workspace: actualWorkspace,
+            expectedWorkspace: expectedCommunityWorkspace,
+            workspaceMatches: false,
+          },
+        },
+      );
+    }
+    return {
+      requestedAgentMode,
+      openclawBin: binary.binPath,
+      openclawBinSource: binary.source,
+      agentId: DEFAULT_PUBLIC_AUTHOR_AGENT,
+      selectionReason: 'community_agent_workspace_mismatch_using_main',
+      warnings: ['community author agent is bound to a different workspace; using main author agent'],
+      communityAgent: {
+        id: COMMUNITY_AUTHOR_AGENT,
+        available: true,
+        workspace: actualWorkspace,
+        expectedWorkspace: expectedCommunityWorkspace,
+        workspaceMatches: false,
+      },
+      availableAgentIds,
+    };
+  }
+
+  return {
+    requestedAgentMode,
+    openclawBin: binary.binPath,
+    openclawBinSource: binary.source,
+    agentId: COMMUNITY_AUTHOR_AGENT,
+    selectionReason: 'community_agent_selected',
+    warnings: [],
+    communityAgent: {
+      id: COMMUNITY_AUTHOR_AGENT,
+      available: true,
+      workspace: actualWorkspace,
+      expectedWorkspace: expectedCommunityWorkspace,
+      workspaceMatches: true,
+    },
+    availableAgentIds,
+  };
+}
+
+export async function buildOpenClawAuthoringPreflight(
+  {
+    workspaceRoot,
+    authorAgent = process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT ?? DEFAULT_AUTHOR_AGENT_MODE,
+    env = process.env,
+  },
+  deps = {},
+) {
+  try {
+    const selection = await resolveOpenClawAuthorAgentSelection(
+      {
+        workspaceRoot,
+        authorAgent,
+        env,
+      },
+      deps,
+    );
+    return {
+      ready: true,
+      ...buildAuthoringSelectionSummary(selection),
+      availableAgentIds: [...selection.availableAgentIds],
+    };
+  } catch (error) {
+    return {
+      ready: false,
+      ...describeAuthoringError(error, authorAgent),
+      availableAgentIds: [],
+    };
+  }
 }
 
 async function loadState(stateFile, warnings) {
@@ -685,6 +1180,47 @@ async function safeLoadDailyIntentForAuthoring(input, deps = {}) {
   }
 }
 
+export async function previewDailyIntentForSocialPlan(
+  {
+    workspaceRoot,
+    configPath = process.env.AQUACLAW_HOSTED_CONFIG,
+    publicExpressionPlan = null,
+    directMessagePlan = null,
+  },
+  deps = {},
+) {
+  if (publicExpressionPlan) {
+    return safeLoadDailyIntentForAuthoring(
+      {
+        workspaceRoot,
+        configPath,
+        authoringKind: 'public',
+        plan: publicExpressionPlan,
+      },
+      deps,
+    );
+  }
+
+  if (directMessagePlan) {
+    return safeLoadDailyIntentForAuthoring(
+      {
+        workspaceRoot,
+        configPath,
+        authoringKind: 'dm',
+        plan: directMessagePlan,
+      },
+      deps,
+    );
+  }
+
+  return {
+    view: null,
+    artifactPaths: null,
+    summary: null,
+    warning: null,
+  };
+}
+
 function trimReplyContextItems(items, targetExpressionId, limit = PUBLIC_AUTHOR_PROMPT_CONTEXT_LIMIT) {
   if (!Array.isArray(items) || items.length <= limit || !targetExpressionId) {
     return Array.isArray(items) ? items.slice(0, limit) : [];
@@ -922,53 +1458,22 @@ export async function syncCommunityAgentWorkspace({ workspaceRoot, communityVoic
 }
 
 export async function resolveOpenClawAuthorAgentId(
-  { workspaceRoot, communityVoiceGuide = null },
+  {
+    workspaceRoot,
+    authorAgent = process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT ?? DEFAULT_AUTHOR_AGENT_MODE,
+    env = process.env,
+  },
   deps = {},
 ) {
-  const execFileFn = deps.execFileFn ?? execFileAsync;
-  const voiceGuide = communityVoiceGuide ?? (await ensureCommunityVoiceGuide({ workspaceRoot }));
-  const communityWorkspace = await syncCommunityAgentWorkspace({
-    workspaceRoot,
-    communityVoiceGuide: voiceGuide,
-  });
-
-  try {
-    const { stdout } = await execFileFn('openclaw', ['agents', 'list', '--json'], {
-      cwd: workspaceRoot,
-      env: process.env,
-      maxBuffer: 1024 * 1024,
-    });
-    const agents = JSON.parse(stdout);
-    if (Array.isArray(agents) && agents.some((item) => item?.id === COMMUNITY_AUTHOR_AGENT)) {
-      return COMMUNITY_AUTHOR_AGENT;
-    }
-
-    await execFileFn(
-      'openclaw',
-      ['agents', 'add', COMMUNITY_AUTHOR_AGENT, '--workspace', communityWorkspace, '--non-interactive', '--json'],
-      {
-        cwd: workspaceRoot,
-        env: process.env,
-        maxBuffer: 1024 * 1024,
-      },
-    );
-
-    try {
-      await execFileFn(
-        'openclaw',
-        ['agents', 'set-identity', '--agent', COMMUNITY_AUTHOR_AGENT, '--workspace', communityWorkspace, '--from-identity', '--json'],
-        {
-          cwd: workspaceRoot,
-          env: process.env,
-          maxBuffer: 1024 * 1024,
-        },
-      );
-    } catch {}
-
-    return COMMUNITY_AUTHOR_AGENT;
-  } catch {
-    return DEFAULT_PUBLIC_AUTHOR_AGENT;
-  }
+  const selection = await resolveOpenClawAuthorAgentSelection(
+    {
+      workspaceRoot,
+      authorAgent,
+      env,
+    },
+    deps,
+  );
+  return selection.agentId;
 }
 
 export function normalizeCommunityVoiceGuide(text) {
@@ -1069,7 +1574,7 @@ export function extractOpenClawAgentTextPayload(output) {
     .map((item) => (typeof item?.text === 'string' ? item.text.trim() : ''))
     .find((item) => item.length > 0);
   if (!text) {
-    throw new Error('openclaw agent returned no text payload');
+    throw new HostedPulseAuthoringError('empty_agent_payload', 'openclaw agent returned no text payload');
   }
   return text;
 }
@@ -1090,7 +1595,7 @@ export function normalizeGeneratedPublicExpressionBody(text) {
   }
 
   if (!body) {
-    throw new Error('generated public expression body is empty');
+    throw new HostedPulseAuthoringError('empty_agent_payload', 'generated authoring body is empty');
   }
 
   return body;
@@ -1162,17 +1667,62 @@ export function buildDirectMessageAuthoringPrompt(input) {
   return lines.filter(Boolean).join('\n');
 }
 
-async function runOpenClawAgentAuthor({ workspaceRoot, prompt }) {
-  const communityVoiceGuide = await ensureCommunityVoiceGuide({ workspaceRoot });
-  const authorAgentId = await resolveOpenClawAuthorAgentId({
-    workspaceRoot,
-    communityVoiceGuide,
-  });
+async function runOpenClawAgentAuthor({
+  workspaceRoot,
+  prompt,
+  authorAgent = process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT ?? DEFAULT_AUTHOR_AGENT_MODE,
+  env = process.env,
+}) {
+  const requestedAgentMode = normalizeAuthorAgentMode(authorAgent);
+  let selection;
+  try {
+    selection = await resolveOpenClawAuthorAgentSelection({
+      workspaceRoot,
+      authorAgent,
+      env,
+    });
+  } catch (error) {
+    if (!(error instanceof HostedPulseAuthoringError) || error.code !== 'community_agent_missing' || requestedAgentMode === 'main') {
+      throw error;
+    }
+    selection = await provisionCommunityAuthorAgent({
+      workspaceRoot,
+      requestedAgentMode,
+      openclawBin: error.details?.openclawBin,
+      openclawBinSource: error.details?.openclawBinSource,
+      env,
+    });
+  }
+
+  if (selection.agentId !== COMMUNITY_AUTHOR_AGENT && requestedAgentMode !== 'main' && selection.selectionReason === 'community_agent_missing_using_main') {
+    try {
+      selection = await provisionCommunityAuthorAgent({
+        workspaceRoot,
+        requestedAgentMode,
+        openclawBin: selection.openclawBin,
+        openclawBinSource: selection.openclawBinSource,
+        availableAgentIds: selection.availableAgentIds,
+        env,
+      });
+    } catch (error) {
+      if (requestedAgentMode === 'community') {
+        throw error;
+      }
+    }
+  }
+
+  if (selection.agentId === COMMUNITY_AUTHOR_AGENT) {
+    const communityVoiceGuide = await ensureCommunityVoiceGuide({ workspaceRoot });
+    await syncCommunityAgentWorkspace({
+      workspaceRoot,
+      communityVoiceGuide,
+    });
+  }
   const args = [
     '--no-color',
     'agent',
     '--agent',
-    authorAgentId,
+    selection.agentId,
     '--message',
     prompt,
     '--thinking',
@@ -1181,12 +1731,46 @@ async function runOpenClawAgentAuthor({ workspaceRoot, prompt }) {
     String(DEFAULT_PUBLIC_AUTHOR_TIMEOUT_SECONDS),
     '--json',
   ];
-  const { stdout } = await execFileAsync('openclaw', args, {
-    cwd: workspaceRoot,
-    env: process.env,
-    maxBuffer: 1024 * 1024,
-  });
-  return JSON.parse(stdout);
+  try {
+    const { stdout } = await execFileAsync(selection.openclawBin, args, {
+      cwd: workspaceRoot,
+      env,
+      maxBuffer: 1024 * 1024,
+    });
+    let output;
+    try {
+      output = JSON.parse(stdout);
+    } catch {
+      throw new HostedPulseAuthoringError('agent_output_invalid', 'openclaw agent returned invalid JSON', {
+        openclawBin: selection.openclawBin,
+        openclawBinSource: selection.openclawBinSource,
+        agentId: selection.agentId,
+        selectionReason: selection.selectionReason,
+        communityAgent: selection.communityAgent,
+        warnings: selection.warnings,
+      });
+    }
+    return {
+      output,
+      authoring: buildAuthoringSelectionSummary(selection),
+    };
+  } catch (error) {
+    if (error instanceof HostedPulseAuthoringError) {
+      throw error;
+    }
+    throw new HostedPulseAuthoringError(
+      'agent_invocation_failed',
+      `openclaw agent invocation failed: ${error instanceof Error ? error.message : String(error)}`,
+      {
+        openclawBin: selection.openclawBin,
+        openclawBinSource: selection.openclawBinSource,
+        agentId: selection.agentId,
+        selectionReason: selection.selectionReason,
+        communityAgent: selection.communityAgent,
+        warnings: selection.warnings,
+      },
+    );
+  }
 }
 
 async function loadPublicExpressionAuthoringContext({ hubUrl, token, publicExpressionPlan }) {
@@ -1215,6 +1799,7 @@ export async function authorPublicExpressionWithOpenClaw(
   {
     workspaceRoot,
     configPath = process.env.AQUACLAW_HOSTED_CONFIG,
+    authorAgent = process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT ?? DEFAULT_AUTHOR_AGENT_MODE,
     hubUrl,
     token,
     socialDecision,
@@ -1293,9 +1878,11 @@ export async function authorPublicExpressionWithOpenClaw(
   const agentOutput = await runAgent({
     workspaceRoot,
     prompt,
+    authorAgent,
   });
+  const normalizedAgentOutput = normalizeAuthoringRunResult(agentOutput);
   return {
-    body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
+    body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(normalizedAgentOutput.output)),
     prompt,
     contextItems,
     dailyIntent: dailyIntentLoaded.view,
@@ -1304,6 +1891,7 @@ export async function authorPublicExpressionWithOpenClaw(
     communityIntent: communityRetrieval.communityIntent,
     retrievedNoteIds: communityRetrieval.retrievedNoteIds,
     retrievedNotes: communityRetrieval.retrievedNotes,
+    authoring: normalizedAgentOutput.authoring,
     warnings: dailyIntentLoaded.warning ? [dailyIntentLoaded.warning] : [],
   };
 }
@@ -1312,6 +1900,7 @@ export async function authorDirectMessageWithOpenClaw(
   {
     workspaceRoot,
     configPath = process.env.AQUACLAW_HOSTED_CONFIG,
+    authorAgent = process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT ?? DEFAULT_AUTHOR_AGENT_MODE,
     hubUrl,
     token,
     socialDecision,
@@ -1373,9 +1962,11 @@ export async function authorDirectMessageWithOpenClaw(
   const agentOutput = await runAgent({
     workspaceRoot,
     prompt,
+    authorAgent,
   });
+  const normalizedAgentOutput = normalizeAuthoringRunResult(agentOutput);
   return {
-    body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(agentOutput)),
+    body: normalizeGeneratedPublicExpressionBody(extractOpenClawAgentTextPayload(normalizedAgentOutput.output)),
     prompt,
     contextItems,
     dailyIntent: dailyIntentLoaded.view,
@@ -1384,6 +1975,7 @@ export async function authorDirectMessageWithOpenClaw(
     communityIntent: communityRetrieval.communityIntent,
     retrievedNoteIds: communityRetrieval.retrievedNoteIds,
     retrievedNotes: communityRetrieval.retrievedNotes,
+    authoring: normalizedAgentOutput.authoring,
     warnings: dailyIntentLoaded.warning ? [dailyIntentLoaded.warning] : [],
   };
 }
@@ -1485,6 +2077,42 @@ function formatWriteBackSummary(summary) {
   return lines;
 }
 
+function formatAuthoringSummary(summary) {
+  const authoring = summary.socialPulse.authoring;
+  if (!authoring) {
+    return [];
+  }
+
+  const lines = [
+    `- Authoring status: ${authoring.status ?? 'unknown'}${authoring.selectionReason ? ` (${authoring.selectionReason})` : ''}`,
+    `- Authoring requested agent mode: ${authoring.requestedAgentMode ?? DEFAULT_AUTHOR_AGENT_MODE}`,
+  ];
+
+  if (authoring.openclawBin) {
+    lines.push(`- Authoring openclaw bin: ${authoring.openclawBin}${authoring.openclawBinSource ? ` [${authoring.openclawBinSource}]` : ''}`);
+  }
+  if (authoring.agentId) {
+    lines.push(`- Authoring agent: ${authoring.agentId}`);
+  }
+  if (authoring.errorCode) {
+    lines.push(`- Authoring error code: ${authoring.errorCode}`);
+  }
+  if (authoring.errorMessage) {
+    lines.push(`- Authoring error detail: ${authoring.errorMessage}`);
+  }
+  if (Array.isArray(authoring.warnings) && authoring.warnings.length > 0) {
+    lines.push(`- Authoring warnings: ${authoring.warnings.join(' | ')}`);
+  }
+  if (authoring.communityAgent?.available) {
+    lines.push(
+      `- Community agent workspace: ${authoring.communityAgent.workspaceMatches ? 'matched' : 'mismatched'}${authoring.communityAgent.workspace ? ` (${authoring.communityAgent.workspace})` : ''}`,
+    );
+  } else if (authoring.requestedAgentMode !== 'main') {
+    lines.push(`- Community agent available: no${authoring.communityAgent?.expectedWorkspace ? ` (expected ${authoring.communityAgent.expectedWorkspace})` : ''}`);
+  }
+  return lines;
+}
+
 function renderMarkdown(summary) {
   return [
     '# Aqua Hosted Pulse',
@@ -1514,6 +2142,7 @@ function renderMarkdown(summary) {
       ? `- Social conversation: ${summary.socialPulse.plan.conversationId}`
       : null,
     formatSocialOutput(summary),
+    ...formatAuthoringSummary(summary),
     ...formatDailyIntentSummary(summary),
     ...formatWriteBackSummary(summary),
     `- Scene decision: ${summary.sceneDecision.reason}`,
@@ -1534,10 +2163,12 @@ function renderMarkdown(summary) {
 
 function parseOptions(argv) {
   const options = {
+    authorAgent: normalizeAuthorAgentMode(process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT),
     configPath: process.env.AQUACLAW_HOSTED_CONFIG,
     dryRun: false,
     feedLimit: 6,
     format: 'json',
+    printAuthoringPreflight: false,
     quietHours: null,
     sceneCooldownMinutes: DEFAULT_SCENE_COOLDOWN_MINUTES,
     sceneProbability: DEFAULT_SCENE_PROBABILITY,
@@ -1547,7 +2178,7 @@ function parseOptions(argv) {
     socialPulseDmTargetCooldownMinutes: DEFAULT_SOCIAL_PULSE_DM_TARGET_COOLDOWN_MINUTES,
     stateFile: process.env.AQUACLAW_HOSTED_PULSE_STATE,
     timeZone: DEFAULT_TIME_ZONE,
-    workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT,
+    workspaceRoot: resolveWorkspaceRoot(process.env.OPENCLAW_WORKSPACE_ROOT),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -1559,6 +2190,10 @@ function parseOptions(argv) {
     }
     if (arg === '--dry-run') {
       options.dryRun = true;
+      continue;
+    }
+    if (arg === '--print-authoring-preflight') {
+      options.printAuthoringPreflight = true;
       continue;
     }
     if (arg.startsWith('--workspace-root')) {
@@ -1657,6 +2292,13 @@ function parseOptions(argv) {
       }
       continue;
     }
+    if (arg.startsWith('--author-agent')) {
+      options.authorAgent = normalizeAuthorAgentMode(parseArgValue(argv, index, arg, '--author-agent'));
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
     if (arg.startsWith('--format')) {
       options.format = parseArgValue(argv, index, arg, '--format').trim();
       if (!arg.includes('=')) {
@@ -1675,6 +2317,7 @@ function parseOptions(argv) {
     throw new Error('format must be json or markdown');
   }
 
+  options.workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
   options.stateFile = resolveHostedPulseStatePath({
     workspaceRoot: options.workspaceRoot,
     stateFile: options.stateFile,
@@ -1685,6 +2328,16 @@ function parseOptions(argv) {
 
 async function main() {
   const options = parseOptions(process.argv.slice(2));
+  if (options.printAuthoringPreflight) {
+    const preflight = await buildOpenClawAuthoringPreflight({
+      workspaceRoot: options.workspaceRoot,
+      authorAgent: options.authorAgent,
+      env: process.env,
+    });
+    console.log(JSON.stringify(preflight, null, 2));
+    return;
+  }
+
   const loaded = await loadHostedConfig({
     workspaceRoot: options.workspaceRoot,
     configPath: options.configPath,
@@ -1962,6 +2615,15 @@ async function main() {
     } else if (remainingSocialCooldownMs > 0) {
       socialPulse.reason = 'cooldown';
     } else if (options.dryRun) {
+      const dailyIntentPreview = await previewDailyIntentForSocialPlan({
+        workspaceRoot: loaded.workspaceRoot,
+        configPath: loaded.configPath,
+        publicExpressionPlan,
+      });
+      socialPulse.dailyIntent = dailyIntentPreview.view ?? null;
+      if (dailyIntentPreview.warning) {
+        warnings.push(dailyIntentPreview.warning);
+      }
       socialPulse.reason = 'dry_run_selected';
     } else {
       let authored;
@@ -1969,6 +2631,7 @@ async function main() {
         authored = await authorPublicExpressionWithOpenClaw({
           workspaceRoot: loaded.workspaceRoot,
           configPath: loaded.configPath,
+          authorAgent: options.authorAgent,
           hubUrl: loaded.config.hubUrl,
           token,
           socialDecision,
@@ -1977,12 +2640,22 @@ async function main() {
           environment: environment?.data?.environment ?? null,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        warnings.push(`social pulse public expression authoring failed: ${message}`);
+        const authoringFailure = describeAuthoringError(error, options.authorAgent);
+        socialPulse.authoring = authoringFailure;
+        if (Array.isArray(authoringFailure.warnings) && authoringFailure.warnings.length > 0) {
+          warnings.push(...authoringFailure.warnings);
+        }
+        warnings.push(
+          `social pulse public expression authoring failed [${authoringFailure.errorCode ?? 'authoring_failed'}]: ${authoringFailure.errorMessage ?? 'unknown error'}`,
+        );
         socialPulse.reason = 'authoring_failed';
       }
 
       if (authored) {
+        socialPulse.authoring = authored.authoring ?? null;
+        if (Array.isArray(authored.authoring?.warnings) && authored.authoring.warnings.length > 0) {
+          warnings.push(...authored.authoring.warnings);
+        }
         if (Array.isArray(authored.warnings) && authored.warnings.length > 0) {
           warnings.push(...authored.warnings);
         }
@@ -2064,6 +2737,15 @@ async function main() {
     } else if (remainingDirectMessageTargetCooldownMs > 0) {
       socialPulse.reason = 'dm_target_cooldown';
     } else if (options.dryRun) {
+      const dailyIntentPreview = await previewDailyIntentForSocialPlan({
+        workspaceRoot: loaded.workspaceRoot,
+        configPath: loaded.configPath,
+        directMessagePlan,
+      });
+      socialPulse.dailyIntent = dailyIntentPreview.view ?? null;
+      if (dailyIntentPreview.warning) {
+        warnings.push(dailyIntentPreview.warning);
+      }
       socialPulse.reason = 'dry_run_selected';
     } else {
       let authored;
@@ -2071,6 +2753,7 @@ async function main() {
         authored = await authorDirectMessageWithOpenClaw({
           workspaceRoot: loaded.workspaceRoot,
           configPath: loaded.configPath,
+          authorAgent: options.authorAgent,
           hubUrl: loaded.config.hubUrl,
           token,
           socialDecision,
@@ -2079,12 +2762,22 @@ async function main() {
           environment: environment?.data?.environment ?? null,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        warnings.push(`social pulse direct message authoring failed: ${message}`);
+        const authoringFailure = describeAuthoringError(error, options.authorAgent);
+        socialPulse.authoring = authoringFailure;
+        if (Array.isArray(authoringFailure.warnings) && authoringFailure.warnings.length > 0) {
+          warnings.push(...authoringFailure.warnings);
+        }
+        warnings.push(
+          `social pulse direct message authoring failed [${authoringFailure.errorCode ?? 'authoring_failed'}]: ${authoringFailure.errorMessage ?? 'unknown error'}`,
+        );
         socialPulse.reason = 'authoring_failed';
       }
 
       if (authored) {
+        socialPulse.authoring = authored.authoring ?? null;
+        if (Array.isArray(authored.authoring?.warnings) && authored.authoring.warnings.length > 0) {
+          warnings.push(...authored.authoring.warnings);
+        }
         if (Array.isArray(authored.warnings) && authored.warnings.length > 0) {
           warnings.push(...authored.warnings);
         }

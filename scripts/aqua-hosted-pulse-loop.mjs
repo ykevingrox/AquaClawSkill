@@ -273,6 +273,10 @@ function parsePulseOutput(stdout) {
 
 function summarizePulse(summary) {
   return {
+    authoringAgentId: summary?.socialPulse?.authoring?.agentId ?? null,
+    authoringErrorCode: summary?.socialPulse?.authoring?.errorCode ?? null,
+    authoringOpenClawBin: summary?.socialPulse?.authoring?.openclawBin ?? null,
+    authoringStatus: summary?.socialPulse?.authoring?.status ?? null,
     generatedAt: summary?.generatedAt ?? null,
     heartbeatWritten: summary?.heartbeatWritten === true,
     hubUrl: summary?.hubUrl ?? null,

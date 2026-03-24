@@ -435,6 +435,25 @@ async function writeCommunityMemoryFixture(workspaceRoot) {
   return communityRoot;
 }
 
+async function writeWriteBackFixture(workspaceRoot, entries, profileId = 'hosted-aqua-example-com') {
+  const writeBackRoot = path.join(workspaceRoot, '.aquaclaw', 'profiles', profileId, 'life-loop', 'writeback');
+  await mkdir(writeBackRoot, { recursive: true });
+  const partitioned = new Map();
+  for (const entry of entries) {
+    const partition = entry.recordedDate ?? String(entry.recordedAt ?? '').slice(0, 10);
+    const lines = partitioned.get(partition) ?? [];
+    lines.push(JSON.stringify(entry));
+    partitioned.set(partition, lines);
+  }
+  for (const [partition, lines] of partitioned.entries()) {
+    await writeFile(path.join(writeBackRoot, `${partition}.ndjson`), `${lines.join('\n')}\n`, 'utf8');
+  }
+  if (entries[0]) {
+    await writeJsonFile(path.join(writeBackRoot, 'latest.json'), entries[0]);
+  }
+  return writeBackRoot;
+}
+
 test('buildDailyIntent surfaces topic, relationship, open-loop, and avoidance hooks from same-day diary context', () => {
   const summary = buildDailyIntent({
     diarySummary: sampleSeaDiarySummary(),
@@ -463,6 +482,102 @@ test('buildDailyIntent surfaces topic, relationship, open-loop, and avoidance ho
   assert.ok(summary.sourceRefs.some((item) => item.layer === 'private_community' && item.exposure === 'private_only'));
   assert.match(markdown, /## Topic Hooks/);
   assert.match(markdown, /Do not upgrade beibei/i);
+});
+
+test('buildDailyIntent carries recent write-back seams forward when same-day continuity is thin', () => {
+  const diarySummary = sampleSeaDiarySummary();
+  diarySummary.visibleLayer.continuityCounts = {
+    directThreads: 0,
+    directLines: 0,
+    publicThreads: 0,
+    publicLines: 0,
+  };
+  diarySummary.localSynthesisLayer.directContinuity = [];
+  diarySummary.localSynthesisLayer.publicContinuity = [];
+
+  const summary = buildDailyIntent({
+    diarySummary,
+    diarySource: {
+      status: 'existing-artifact',
+      artifactPaths: {
+        jsonPath: '/tmp/sea-diary-context/2026-03-19.json',
+        markdownPath: '/tmp/sea-diary-context/2026-03-19.md',
+      },
+    },
+    writeBackSource: {
+      status: 'available',
+      paths: {
+        root: '/tmp/life-loop/writeback',
+        selectionKind: 'explicit',
+        profileId: 'hosted-aqua-example-com',
+      },
+      entries: [
+        {
+          id: 'writeback-public-1',
+          recordedAt: '2026-03-18T23:30:00.000Z',
+          lane: 'public_expression',
+          output: {
+            kind: 'public_expression',
+            actionId: 'expr-123',
+            mode: 'reply',
+            bodyPreview: 'I am still tracing that bend from here too.',
+            targetGatewayHandle: '@reef-cartographer',
+            targetGatewayId: 'gateway-cartographer',
+          },
+          dailyIntent: {
+            newUnresolvedHooks: [
+              {
+                id: 'generated-public-hook-1',
+                lane: 'public_reply',
+                kind: 'public_thread_callback',
+                targetHandle: '@reef-cartographer',
+                targetGatewayId: 'gateway-cartographer',
+                summary: 'A recent public reply may still keep the same seam open.',
+                cue: 'I am still tracing that bend from here too.',
+              },
+            ],
+          },
+        },
+        {
+          id: 'writeback-dm-1',
+          recordedAt: '2026-03-18T22:30:00.000Z',
+          lane: 'direct_message',
+          output: {
+            kind: 'direct_message',
+            actionId: 'msg-456',
+            mode: 'reply',
+            bodyPreview: 'I am still carrying that thread tonight.',
+            targetGatewayHandle: '@architect',
+            targetGatewayId: 'gateway-architect',
+            conversationId: 'conversation-architect',
+          },
+          dailyIntent: {
+            newUnresolvedHooks: [
+              {
+                id: 'generated-dm-hook-1',
+                lane: 'dm',
+                kind: 'dm_callback',
+                targetHandle: '@architect',
+                targetGatewayId: 'gateway-architect',
+                conversationId: 'conversation-architect',
+                summary: 'A recent DM may still support one more private callback.',
+                cue: 'I am still carrying that thread tonight.',
+              },
+            ],
+          },
+        },
+      ],
+      warnings: [],
+    },
+  });
+  const markdown = renderDailyIntentMarkdown(summary);
+
+  assert.equal(summary.source.writeBack.status, 'available');
+  assert.ok(summary.topicHooks.some((item) => item.id.startsWith('topic-writeback-')));
+  assert.ok(summary.relationshipHooks.some((item) => item.id.startsWith('relationship-writeback-')));
+  assert.ok(summary.openLoops.some((item) => item.id.startsWith('open-writeback-')));
+  assert.ok(summary.sourceRefs.some((item) => item.layer === 'local_writeback'));
+  assert.match(markdown, /Write-back carry-forward: available/);
 });
 
 test('generateDailyIntent reuses an existing sea-diary-context artifact by default', async () => {
@@ -587,4 +702,69 @@ test('generateDailyIntent honors an explicit hosted config path when locating pr
   assert.equal(result.diarySource.status, 'existing-artifact');
   assert.equal(result.diarySource.artifactPaths.jsonPath, diaryPaths.jsonPath);
   assert.equal(result.paths.mirrorRoot, path.join(explicitProfile.profileRoot, 'mirror'));
+});
+
+test('generateDailyIntent loads recent write-back carry-forward entries from the selected hosted profile', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'aquaclaw-daily-intent-writeback-'));
+  const profile = resolveHostedProfilePaths({
+    workspaceRoot,
+    profileId: 'hosted-aqua-example-com',
+  });
+  await mkdir(profile.profileRoot, { recursive: true });
+  await saveActiveHostedProfile({
+    workspaceRoot,
+    profileId: profile.profileId,
+    hubUrl: 'https://aqua.example.com',
+    configPath: profile.configPath,
+  });
+
+  const summary = sampleSeaDiarySummary();
+  summary.visibleLayer.continuityCounts = {
+    directThreads: 0,
+    directLines: 0,
+    publicThreads: 0,
+    publicLines: 0,
+  };
+  summary.localSynthesisLayer.directContinuity = [];
+  summary.localSynthesisLayer.publicContinuity = [];
+  await writeDiaryArtifact(workspaceRoot, summary);
+  await writeWriteBackFixture(workspaceRoot, [
+    {
+      id: 'writeback-public-1',
+      recordedAt: '2026-03-18T23:30:00.000Z',
+      recordedDate: '2026-03-18',
+      lane: 'public_expression',
+      output: {
+        kind: 'public_expression',
+        actionId: 'expr-123',
+        mode: 'reply',
+        bodyPreview: 'I am still tracing that bend from here too.',
+        targetGatewayHandle: '@reef-cartographer',
+        targetGatewayId: 'gateway-cartographer',
+      },
+      dailyIntent: {
+        newUnresolvedHooks: [
+          {
+            id: 'generated-public-hook-1',
+            lane: 'public_reply',
+            kind: 'public_thread_callback',
+            targetHandle: '@reef-cartographer',
+            targetGatewayId: 'gateway-cartographer',
+            summary: 'A recent public reply may still keep the same seam open.',
+            cue: 'I am still tracing that bend from here too.',
+          },
+        ],
+      },
+    },
+  ]);
+
+  const result = await generateDailyIntent({
+    workspaceRoot,
+    date: '2026-03-19',
+    timeZone: 'Asia/Shanghai',
+  });
+
+  assert.equal(result.summary.source.writeBack.status, 'available');
+  assert.ok(result.summary.topicHooks.some((item) => item.id.startsWith('topic-writeback-')));
+  assert.ok(result.summary.openLoops.some((item) => item.id.startsWith('open-writeback-')));
 });

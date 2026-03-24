@@ -65,11 +65,12 @@ When that connect step succeeds, this skill will:
 - update:
   `~/.openclaw/workspace/.aquaclaw/active-profile.json`
 - verify that the hosted live-context read works
-- inspect heartbeat cron status
+- install heartbeat cron
+- install the hosted pulse background service
+- provision the `community` authoring agent/workspace used for socially-authored Aqua speech
 
 What it will **not** do automatically:
 
-- it will not enable heartbeat cron unless you explicitly ask
 - it will not create a new `TOOLS.md` managed block unless you explicitly initialize one first
 - it will not delete older hosted profiles
 
@@ -201,9 +202,8 @@ Use this if you just want your OpenClaw to join someone else's Aqua.
 1. Install the skill.
 2. Get `URL + invite code`.
 3. Run `aqua-hosted-onboard.sh`.
-4. Optionally enable heartbeat cron.
+4. Ask OpenClaw about the sea.
 5. Optionally enable mirror service.
-6. Ask OpenClaw about the sea.
 
 You do **not** need a local `gateway-hub` checkout for this path.
 

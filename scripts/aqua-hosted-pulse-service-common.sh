@@ -10,6 +10,10 @@ aquaclaw_hp_default_workspace_root() {
   echo "${OPENCLAW_WORKSPACE_ROOT:-$HOME/.openclaw/workspace}"
 }
 
+aquaclaw_hp_default_service_path() {
+  echo "${AQUACLAW_HOSTED_PULSE_SERVICE_PATH:-$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+}
+
 aquaclaw_hp_default_hosted_config() {
   echo "${AQUACLAW_HOSTED_CONFIG:-}"
 }
@@ -44,6 +48,10 @@ aquaclaw_hp_default_timeout_ms() {
 
 aquaclaw_hp_default_timezone() {
   echo "${AQUACLAW_HOSTED_PULSE_TIMEZONE:-Asia/Shanghai}"
+}
+
+aquaclaw_hp_default_author_agent() {
+  echo "${AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT:-auto}"
 }
 
 aquaclaw_hp_default_quiet_hours() {
@@ -106,10 +114,71 @@ aquaclaw_hp_script_dir() {
   cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
 }
 
+aquaclaw_hp_pulse_script_path() {
+  local script_dir
+  script_dir="$(aquaclaw_hp_script_dir)"
+  echo "${script_dir}/aqua-hosted-pulse.mjs"
+}
+
 aquaclaw_hp_script_path() {
   local script_dir
   script_dir="$(aquaclaw_hp_script_dir)"
   echo "${script_dir}/aqua-hosted-pulse-loop.mjs"
+}
+
+aquaclaw_hp_resolve_openclaw_bin() {
+  local service_path="$1"
+  local explicit_bin="${2:-${OPENCLAW_BIN:-}}"
+  local candidate=""
+
+  if [[ -n "${explicit_bin}" ]]; then
+    candidate="${explicit_bin}"
+    if [[ "${candidate}" != /* ]]; then
+      candidate="$(PATH="${service_path}" command -v "${candidate}" || true)"
+    fi
+    if [[ -n "${candidate}" && -x "${candidate}" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+    return 1
+  fi
+
+  candidate="$(PATH="${service_path}" command -v openclaw || true)"
+  if [[ -n "${candidate}" && -x "${candidate}" ]]; then
+    echo "${candidate}"
+    return 0
+  fi
+
+  for candidate in \
+    "$HOME/.local/bin/openclaw" \
+    "/usr/local/bin/openclaw" \
+    "/opt/homebrew/bin/openclaw" \
+    "/usr/bin/openclaw"
+  do
+    if [[ -x "${candidate}" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+aquaclaw_hp_authoring_preflight_json() {
+  local workspace_root="$1"
+  local author_agent="$2"
+  local service_path="$3"
+  local openclaw_bin="$4"
+  local node_bin
+  local pulse_script_path
+  node_bin="$(aquaclaw_hp_node_bin)"
+  pulse_script_path="$(aquaclaw_hp_pulse_script_path)"
+  env \
+    PATH="${service_path}" \
+    OPENCLAW_WORKSPACE_ROOT="${workspace_root}" \
+    OPENCLAW_BIN="${openclaw_bin}" \
+    AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT="${author_agent}" \
+    "${node_bin}" "${pulse_script_path}" --print-authoring-preflight
 }
 
 aquaclaw_hp_service_file() {
@@ -156,22 +225,25 @@ aquaclaw_hp_render_file() {
   local workspace_root="$3"
   local node_bin="$4"
   local script_path="$5"
-  local hosted_config="$6"
-  local pulse_state_file="$7"
-  local loop_state_file="$8"
-  local min_seconds="$9"
-  local jitter_seconds="${10}"
-  local failure_min_seconds="${11}"
-  local failure_jitter_seconds="${12}"
-  local timeout_ms="${13}"
-  local timezone="${14}"
-  local quiet_hours="${15}"
-  local feed_limit="${16}"
-  local social_cooldown_minutes="${17}"
-  local dm_cooldown_minutes="${18}"
-  local dm_target_cooldown_minutes="${19}"
-  local stdout_log="${20}"
-  local stderr_log="${21}"
+  local service_path="$6"
+  local openclaw_bin="$7"
+  local author_agent="$8"
+  local hosted_config="$9"
+  local pulse_state_file="${10}"
+  local loop_state_file="${11}"
+  local min_seconds="${12}"
+  local jitter_seconds="${13}"
+  local failure_min_seconds="${14}"
+  local failure_jitter_seconds="${15}"
+  local timeout_ms="${16}"
+  local timezone="${17}"
+  local quiet_hours="${18}"
+  local feed_limit="${19}"
+  local social_cooldown_minutes="${20}"
+  local dm_cooldown_minutes="${21}"
+  local dm_target_cooldown_minutes="${22}"
+  local stdout_log="${23}"
+  local stderr_log="${24}"
 
   case "${platform}" in
     darwin)
@@ -205,8 +277,14 @@ aquaclaw_hp_render_file() {
     <dict>
       <key>HOME</key>
       <string>${HOME}</string>
+      <key>PATH</key>
+      <string>${service_path}</string>
       <key>OPENCLAW_WORKSPACE_ROOT</key>
       <string>${workspace_root}</string>
+      <key>OPENCLAW_BIN</key>
+      <string>${openclaw_bin}</string>
+      <key>AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT</key>
+      <string>${author_agent}</string>
       <key>AQUACLAW_HOSTED_CONFIG</key>
       <string>${hosted_config}</string>
       <key>AQUACLAW_HOSTED_PULSE_STATE</key>
@@ -253,7 +331,10 @@ ExecStart=${node_bin} ${script_path}
 Restart=always
 RestartSec=5
 Environment=HOME=${HOME}
+Environment=PATH=${service_path}
 Environment=OPENCLAW_WORKSPACE_ROOT=${workspace_root}
+Environment=OPENCLAW_BIN=${openclaw_bin}
+Environment=AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT=${author_agent}
 Environment=AQUACLAW_HOSTED_CONFIG=${hosted_config}
 Environment=AQUACLAW_HOSTED_PULSE_STATE=${pulse_state_file}
 Environment=AQUACLAW_HOSTED_PULSE_LOOP_STATE_FILE=${loop_state_file}

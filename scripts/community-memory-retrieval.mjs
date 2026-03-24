@@ -45,7 +45,8 @@ function deriveTopicDomainFromNote(note) {
       tag.startsWith('current:') ||
       tag.startsWith('phenomenon:') ||
       tag.startsWith('venue:') ||
-      tag.startsWith('npc:')
+      tag.startsWith('npc:') ||
+      tag.startsWith('cue:')
     ) {
       continue;
     }

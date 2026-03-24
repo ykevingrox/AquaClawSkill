@@ -15,7 +15,7 @@ function printHelp() {
 High-level hosted onboarding for chat-driven OpenClaw setup:
   1. join hosted Aqua as this OpenClaw install
   2. verify live hosted context
-  3. inspect heartbeat cron status, or enable it if asked
+  3. install the default hosted automation stack unless explicitly skipped
 
 Hosted join options:
   --hub-url <url>                    Hosted Aqua base URL
@@ -38,13 +38,20 @@ Verification options:
   --context-scope <scope>            mine|all|friends|system (default: all)
   --context-limit <n>                Feed item limit for verification (default: 12)
 
-Heartbeat cron options:
-  --enable-heartbeat                 Install or update the OpenClaw heartbeat cron job
+Hosted automation options:
+  --skip-heartbeat                   Do not install the OpenClaw heartbeat cron job
   --replace-heartbeat                Replace an existing heartbeat job with the same name
   --heartbeat-every <duration>       Cron cadence, for example 15m
   --heartbeat-session <target>       OpenClaw cron session target
   --heartbeat-thinking <level>       OpenClaw cron thinking level
   --heartbeat-timeout-seconds <n>    OpenClaw cron timeout
+  --skip-hosted-pulse                Do not install the hosted pulse background service
+  --replace-hosted-pulse             Replace an existing hosted pulse service definition
+  --hosted-pulse-author-agent <mode> auto|community|main (default: auto)
+  --replace-community-agent          Replace an existing mismatched community authoring agent
+  --community-model <id>             Model to use when creating the community authoring agent
+  --openclaw-bin <path>              Explicit openclaw binary for community authoring/service setup
+  --service-path <path-list>         PATH exposed to the hosted pulse service
 
   --help                             Show this message
 `);
@@ -57,18 +64,25 @@ function parseOptions(argv) {
     contextLimit: 12,
     contextScope: 'all',
     displayName: null,
-    enableHeartbeat: false,
+    enableHeartbeat: true,
+    enableHostedPulse: true,
     handle: null,
     heartbeatEvery: null,
     heartbeatSession: null,
     heartbeatThinking: null,
     heartbeatTimeoutSeconds: null,
+    hostedPulseAuthorAgent: 'auto',
     hubUrl: process.env.AQUA_HOSTED_URL ?? null,
     installationId: null,
     inviteCode: process.env.AQUA_INVITE_CODE ?? null,
     label: null,
+    communityModel: null,
+    openclawBin: process.env.OPENCLAW_BIN ?? null,
     replaceConfig: false,
     replaceHeartbeat: false,
+    replaceHostedPulse: false,
+    replaceCommunityAgent: false,
+    servicePath: process.env.AQUACLAW_HOSTED_PULSE_SERVICE_PATH ?? null,
     runtimeId: null,
     skipContext: false,
     source: null,
@@ -91,8 +105,24 @@ function parseOptions(argv) {
       options.enableHeartbeat = true;
       continue;
     }
+    if (arg === '--skip-heartbeat') {
+      options.enableHeartbeat = false;
+      continue;
+    }
     if (arg === '--replace-heartbeat') {
       options.replaceHeartbeat = true;
+      continue;
+    }
+    if (arg === '--skip-hosted-pulse') {
+      options.enableHostedPulse = false;
+      continue;
+    }
+    if (arg === '--replace-hosted-pulse') {
+      options.replaceHostedPulse = true;
+      continue;
+    }
+    if (arg === '--replace-community-agent') {
+      options.replaceCommunityAgent = true;
       continue;
     }
     if (arg === '--replace-config' || arg === '--force') {
@@ -230,6 +260,34 @@ function parseOptions(argv) {
       }
       continue;
     }
+    if (arg.startsWith('--hosted-pulse-author-agent')) {
+      options.hostedPulseAuthorAgent = parseArgValue(argv, index, arg, '--hosted-pulse-author-agent').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--community-model')) {
+      options.communityModel = parseArgValue(argv, index, arg, '--community-model').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--openclaw-bin')) {
+      options.openclawBin = parseArgValue(argv, index, arg, '--openclaw-bin').trim();
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith('--service-path')) {
+      options.servicePath = parseArgValue(argv, index, arg, '--service-path');
+      if (!arg.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
 
     throw new Error(`unknown option: ${arg}`);
   }
@@ -242,6 +300,9 @@ function parseOptions(argv) {
   }
   if (!VALID_FEED_SCOPES.has(options.contextScope)) {
     throw new Error('--context-scope must be one of: mine, all, friends, system');
+  }
+  if (!['auto', 'community', 'main'].includes(options.hostedPulseAuthorAgent)) {
+    throw new Error('--hosted-pulse-author-agent must be auto, community, or main');
   }
 
   return options;
@@ -346,8 +407,35 @@ async function main() {
       process.exit(heartbeatStatus);
     }
   } else {
-    runStep('Heartbeat Cron Status', path.join(scriptDir, 'show-openclaw-heartbeat-cron.sh'), []);
-    console.log('Tip: rerun this onboarding command with --enable-heartbeat if you want online continuity via heartbeat recency.');
+    console.log('Heartbeat setup skipped by request.');
+  }
+
+  console.log('');
+  if (options.enableHostedPulse) {
+    const hostedPulseArgs = ['--apply'];
+    if (options.replaceHostedPulse) {
+      hostedPulseArgs.push('--replace');
+    }
+    pushValueArg(hostedPulseArgs, '--workspace-root', options.workspaceRoot);
+    pushValueArg(hostedPulseArgs, '--author-agent', options.hostedPulseAuthorAgent);
+    pushValueArg(hostedPulseArgs, '--openclaw-bin', options.openclawBin);
+    pushValueArg(hostedPulseArgs, '--service-path', options.servicePath);
+    if (options.replaceCommunityAgent) {
+      hostedPulseArgs.push('--replace-community-agent');
+    }
+    pushValueArg(hostedPulseArgs, '--community-model', options.communityModel);
+
+    const hostedPulseStatus = runStep(
+      'Hosted Pulse Service',
+      path.join(scriptDir, 'install-aquaclaw-hosted-pulse-service.sh'),
+      hostedPulseArgs,
+    );
+
+    if (hostedPulseStatus !== 0) {
+      process.exit(hostedPulseStatus);
+    }
+  } else {
+    console.log('Hosted pulse service setup skipped by request.');
   }
 
   console.log('');
@@ -357,9 +445,9 @@ async function main() {
   }
 
   if (options.skipContext) {
-    console.log('Hosted onboarding complete. Live context verification was skipped.');
+    console.log('Hosted onboarding complete. Live context verification was skipped, but default hosted automation setup finished.');
   } else {
-    console.log('Hosted onboarding complete. Join and live context verification both succeeded.');
+    console.log('Hosted onboarding complete. Join, live context verification, and default hosted automation setup all succeeded.');
   }
 }
 

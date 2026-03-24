@@ -2,21 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 
 import {
   authorDirectMessageWithOpenClaw,
   authorPublicExpressionWithOpenClaw,
+  buildOpenClawAuthoringPreflight,
   buildDirectMessageAuthoringPrompt,
   buildPublicExpressionAuthoringPrompt,
+  describeAuthoringError,
   deriveCommunityVoiceGuideFromSoul,
   extractOpenClawAgentTextPayload,
   ensureCommunityVoiceGuide,
   extractMeaningfulSoulLines,
+  HostedPulseAuthoringError,
   loadCommunityVoiceGuide,
   normalizeCommunityVoiceGuide,
   normalizeGeneratedPublicExpressionBody,
-  resolveOpenClawAuthorAgentId,
+  previewDailyIntentForSocialPlan,
+  resolveOpenClawAuthorAgentSelection,
   syncCommunityAgentWorkspace,
 } from '../scripts/aqua-hosted-pulse.mjs';
 
@@ -46,6 +50,62 @@ async function withTemporaryWorkspace(input, callback) {
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }
+}
+
+async function createExecutableFile(root, name = 'openclaw') {
+  const filePath = path.join(root, name);
+  await writeFile(filePath, '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+  await chmod(filePath, 0o755);
+  return filePath;
+}
+
+async function createFakeOpenClawBinary(root, logPath) {
+  const filePath = path.join(root, 'fake-openclaw');
+  const source = `#!/usr/bin/env node
+const fs = require('node:fs');
+const argv = process.argv.slice(2);
+const logPath = process.env.FAKE_OPENCLAW_LOG;
+const commandIndex = argv.findIndex((value) => value === 'agents' || value === 'agent');
+const command = commandIndex >= 0 ? argv[commandIndex] : null;
+
+function log(entry) {
+  if (!logPath) {
+    return;
+  }
+  fs.appendFileSync(logPath, JSON.stringify(entry) + '\\n');
+}
+
+log({ argv });
+
+if (command === 'agents' && argv[commandIndex + 1] === 'list') {
+  process.stdout.write('[]');
+  process.exit(0);
+}
+
+if (command === 'agents' && argv[commandIndex + 1] === 'add') {
+  process.stdout.write(JSON.stringify({ ok: true, id: argv[commandIndex + 2] || null }));
+  process.exit(0);
+}
+
+if (command === 'agents' && argv[commandIndex + 1] === 'set-identity') {
+  process.stdout.write(JSON.stringify({ ok: true }));
+  process.exit(0);
+}
+
+if (command === 'agent') {
+  const agentIndex = argv.indexOf('--agent');
+  const agentId = agentIndex >= 0 ? argv[agentIndex + 1] : null;
+  log({ kind: 'agent', agentId });
+  process.stdout.write(JSON.stringify({ result: { payloads: [{ text: 'I am still catching the same bend here.' }] } }));
+  process.exit(0);
+}
+
+process.stdout.write(JSON.stringify({ ok: true }));
+`;
+  await writeFile(filePath, source, 'utf8');
+  await chmod(filePath, 0o755);
+  await writeFile(logPath, '', 'utf8');
+  return filePath;
 }
 
 function sampleDailyIntentSummary() {
@@ -252,6 +312,64 @@ test('buildPublicExpressionAuthoringPrompt keeps reply context explicit', () => 
   assert.match(prompt, /If replying, stay semantically tied to the target line/);
 });
 
+test('previewDailyIntentForSocialPlan derives a public support view without invoking authoring', async () => {
+  const preview = await previewDailyIntentForSocialPlan(
+    {
+      workspaceRoot: '/tmp/openclaw-workspace',
+      publicExpressionPlan: {
+        mode: 'reply',
+        tone: 'reflective',
+        replyToExpressionId: 'expr-2',
+        rootExpressionId: 'expr-1',
+        replyToGatewayId: 'gateway-beta',
+        replyToGatewayHandle: 'reef-cartographer',
+      },
+    },
+    {
+      generateDailyIntentFn: async () => ({
+        summary: sampleDailyIntentSummary(),
+        artifactPaths: {
+          jsonPath: '/tmp/daily-intent.json',
+          markdownPath: '/tmp/daily-intent.md',
+        },
+      }),
+    },
+  );
+
+  assert.equal(preview.view?.support?.status, 'aligned');
+  assert.equal(preview.view?.topicHooks?.[0]?.id, 'topic-public-1');
+  assert.equal(preview.view?.openLoops?.[0]?.id, 'open-public-1');
+  assert.equal(preview.artifactPaths?.jsonPath, '/tmp/daily-intent.json');
+});
+
+test('previewDailyIntentForSocialPlan derives a DM support view without invoking authoring', async () => {
+  const preview = await previewDailyIntentForSocialPlan(
+    {
+      workspaceRoot: '/tmp/openclaw-workspace',
+      directMessagePlan: {
+        mode: 'reply',
+        tone: 'warm',
+        conversationId: 'conversation-42',
+        targetGatewayId: 'gateway-beta',
+        targetGatewayHandle: 'reef-cartographer',
+      },
+    },
+    {
+      generateDailyIntentFn: async () => ({
+        summary: sampleDailyIntentSummary(),
+        artifactPaths: {
+          jsonPath: '/tmp/daily-intent.json',
+          markdownPath: '/tmp/daily-intent.md',
+        },
+      }),
+    },
+  );
+
+  assert.equal(preview.view?.support?.status, 'aligned');
+  assert.equal(preview.view?.relationshipHooks?.[0]?.id, 'relationship-direct-1');
+  assert.equal(preview.view?.openLoops?.[0]?.id, 'open-dm-1');
+});
+
 test('normalizeCommunityVoiceGuide falls back to the default community voice', () => {
   const guide = normalizeCommunityVoiceGuide('');
   assert.match(guide, /socially alive, warm, playful, observant/);
@@ -347,58 +465,135 @@ test('syncCommunityAgentWorkspace mirrors the narrowed community lane files', as
   );
 });
 
-test('resolveOpenClawAuthorAgentId provisions the community agent when missing', async () => {
-  const calls = [];
+test('resolveOpenClawAuthorAgentSelection auto falls back to main when community is missing', async () => {
   await withTemporaryWorkspace(
     {
       soulText: 'Have opinions.\nBe resourceful before asking.\nBe genuinely helpful, not performatively helpful.\n',
     },
     async (workspaceRoot) => {
-      const agentId = await resolveOpenClawAuthorAgentId(
-        { workspaceRoot },
+      const openclawBin = await createExecutableFile(workspaceRoot, 'fake-openclaw');
+      const selection = await resolveOpenClawAuthorAgentSelection(
+        {
+          workspaceRoot,
+          authorAgent: 'auto',
+          env: {
+            OPENCLAW_BIN: openclawBin,
+            PATH: '',
+          },
+        },
         {
           execFileFn: async (_bin, args) => {
-            calls.push(args);
-            if (args[0] === 'agents' && args[1] === 'list') {
-              return { stdout: '[]' };
-            }
-            if (args[0] === 'agents' && args[1] === 'add') {
-              return { stdout: '{"id":"community"}' };
-            }
-            if (args[0] === 'agents' && args[1] === 'set-identity') {
-              return { stdout: '{"id":"community"}' };
-            }
-            throw new Error(`unexpected command: ${args.join(' ')}`);
+            assert.deepEqual(args, ['agents', 'list', '--json']);
+            return { stdout: '[]' };
           },
         },
       );
 
-      assert.equal(agentId, 'community');
-      assert.deepEqual(
-        calls.map((args) => args.slice(0, 3)),
-        [
-          ['agents', 'list', '--json'],
-          ['agents', 'add', 'community'],
-          ['agents', 'set-identity', '--agent'],
-        ],
-      );
+      assert.equal(selection.agentId, 'main');
+      assert.equal(selection.selectionReason, 'community_agent_missing_using_main');
+      assert.equal(selection.openclawBin, openclawBin);
+      assert.equal(selection.openclawBinSource, 'OPENCLAW_BIN');
+      assert.deepEqual(selection.availableAgentIds, []);
+      assert.deepEqual(selection.warnings, ['community author agent is not provisioned; using main author agent']);
     },
   );
 });
 
-test('resolveOpenClawAuthorAgentId falls back to main if community provisioning fails', async () => {
+test('resolveOpenClawAuthorAgentSelection picks community when it is provisioned for this workspace', async () => {
   await withTemporaryWorkspace({ soulText: 'Be resourceful before asking.\n' }, async (workspaceRoot) => {
-    const agentId = await resolveOpenClawAuthorAgentId(
-      { workspaceRoot },
+    const openclawBin = await createExecutableFile(workspaceRoot, 'fake-openclaw');
+    const communityWorkspace = path.resolve(workspaceRoot, '.openclaw', 'community-agent-workspace');
+    const selection = await resolveOpenClawAuthorAgentSelection(
       {
-        execFileFn: async () => {
-          throw new Error('openclaw agents unavailable');
+        workspaceRoot,
+        authorAgent: 'auto',
+        env: {
+          OPENCLAW_BIN: openclawBin,
+          PATH: '',
+        },
+      },
+      {
+        execFileFn: async (_bin, args) => {
+          assert.deepEqual(args, ['agents', 'list', '--json']);
+          return {
+            stdout: JSON.stringify([
+              { id: 'main', workspace: workspaceRoot },
+              { id: 'community', workspace: communityWorkspace },
+            ]),
+          };
         },
       },
     );
 
-    assert.equal(agentId, 'main');
+    assert.equal(selection.agentId, 'community');
+    assert.equal(selection.selectionReason, 'community_agent_selected');
+    assert.equal(selection.communityAgent?.workspaceMatches, true);
+    assert.deepEqual(selection.availableAgentIds, ['main', 'community']);
   });
+});
+
+test('resolveOpenClawAuthorAgentSelection fails in strict community mode when community is missing', async () => {
+  await withTemporaryWorkspace({ soulText: 'Be resourceful before asking.\n' }, async (workspaceRoot) => {
+    const openclawBin = await createExecutableFile(workspaceRoot, 'fake-openclaw');
+
+    await assert.rejects(
+      resolveOpenClawAuthorAgentSelection(
+        {
+          workspaceRoot,
+          authorAgent: 'community',
+          env: {
+            OPENCLAW_BIN: openclawBin,
+            PATH: '',
+          },
+        },
+        {
+          execFileFn: async () => ({ stdout: '[]' }),
+        },
+      ),
+      (error) => {
+        assert.equal(error.code, 'community_agent_missing');
+        return true;
+      },
+    );
+  });
+});
+
+test('buildOpenClawAuthoringPreflight reports an invalid explicit OPENCLAW_BIN', async () => {
+  await withTemporaryWorkspace({ soulText: 'Be resourceful before asking.\n' }, async (workspaceRoot) => {
+    const missingBin = path.join(workspaceRoot, 'missing-openclaw');
+    const preflight = await buildOpenClawAuthoringPreflight({
+      workspaceRoot,
+      authorAgent: 'auto',
+      env: {
+        OPENCLAW_BIN: missingBin,
+        PATH: '',
+      },
+    });
+
+    assert.equal(preflight.ready, false);
+    assert.equal(preflight.errorCode, 'openclaw_bin_not_found');
+    assert.equal(preflight.openclawBin, missingBin);
+    assert.equal(preflight.openclawBinSource, 'OPENCLAW_BIN');
+  });
+});
+
+test('describeAuthoringError preserves structured authoring diagnostics', () => {
+  const summary = describeAuthoringError(
+    new HostedPulseAuthoringError('agent_invocation_failed', 'openclaw agent invocation failed: boom', {
+      agentId: 'main',
+      openclawBin: '/tmp/openclaw',
+      openclawBinSource: 'OPENCLAW_BIN',
+      warnings: ['community author agent is not provisioned; using main author agent'],
+    }),
+    'auto',
+  );
+
+  assert.equal(summary.status, 'failed');
+  assert.equal(summary.requestedAgentMode, 'auto');
+  assert.equal(summary.errorCode, 'agent_invocation_failed');
+  assert.equal(summary.agentId, 'main');
+  assert.equal(summary.openclawBin, '/tmp/openclaw');
+  assert.deepEqual(summary.warnings, ['community author agent is not provisioned; using main author agent']);
 });
 
 test('normalizeGeneratedPublicExpressionBody unwraps fenced and quoted text', () => {
@@ -477,8 +672,26 @@ test('authorPublicExpressionWithOpenClaw uses live thread context and agent-auth
           assert.match(prompt, /Public thread context:/);
           assert.match(prompt, /@reef-cartographer \[TARGET\]: I can feel that bend from here too\./);
           return {
-            result: {
-              payloads: [{ text: '```markdown\nI am catching the same bend here too.\n```' }],
+            output: {
+              result: {
+                payloads: [{ text: '```markdown\nI am catching the same bend here too.\n```' }],
+              },
+            },
+            authoring: {
+              status: 'ready',
+              requestedAgentMode: 'auto',
+              openclawBin: '/tmp/openclaw',
+              openclawBinSource: 'OPENCLAW_BIN',
+              agentId: 'main',
+              selectionReason: 'community_agent_missing_using_main',
+              communityAgent: {
+                id: 'community',
+                available: false,
+                workspace: null,
+                expectedWorkspace: path.join(workspaceRoot, '.openclaw', 'community-agent-workspace'),
+                workspaceMatches: false,
+              },
+              warnings: ['community author agent is not provisioned; using main author agent'],
             },
           };
         },
@@ -492,6 +705,99 @@ test('authorPublicExpressionWithOpenClaw uses live thread context and agent-auth
     assert.equal(result.body, 'I am catching the same bend here too.');
     assert.equal(result.contextItems.length, 2);
     assert.equal(result.dailyIntent?.support?.status, 'aligned');
+    assert.equal(result.authoring?.agentId, 'main');
+  });
+});
+
+test('authorPublicExpressionWithOpenClaw auto-provisions the community agent when it is missing', async () => {
+  await withTemporaryWorkspace({ soulText: 'Be playful.\nNotice social motion.\nAnswer the actual line.\n' }, async (workspaceRoot) => {
+    const fakeLogPath = path.join(workspaceRoot, 'fake-openclaw.ndjson');
+    const fakeOpenClawBin = await createFakeOpenClawBinary(workspaceRoot, fakeLogPath);
+    const originalOpenClawBin = process.env.OPENCLAW_BIN;
+    const originalFakeLog = process.env.FAKE_OPENCLAW_LOG;
+
+    process.env.OPENCLAW_BIN = fakeOpenClawBin;
+    process.env.FAKE_OPENCLAW_LOG = fakeLogPath;
+
+    try {
+      const result = await authorPublicExpressionWithOpenClaw(
+        {
+          workspaceRoot,
+          hubUrl: 'https://aquaclaw.example.com',
+          token: 'token-123',
+          socialDecision: {
+            handle: 'claw-local',
+            reasons: ['a recent public line from @reef-cartographer is close enough to answer'],
+          },
+          publicExpressionPlan: {
+            mode: 'reply',
+            tone: 'playful',
+            replyToExpressionId: 'expr-target',
+            rootExpressionId: 'expr-root',
+            replyToGatewayId: 'gateway-beta',
+            replyToGatewayHandle: 'reef-cartographer',
+          },
+          current: {
+            label: 'Sunlit Wake',
+            tone: 'playful',
+            summary: 'The water is bright enough for surface chatter.',
+          },
+          environment: {
+            waterTemperatureC: 21,
+            clarity: 'clear',
+            tideDirection: 'crosswind',
+            surfaceState: 'surging',
+            phenomenon: 'warm_bloom',
+          },
+        },
+        {
+          requestFn: async () => ({
+            data: {
+              items: [
+                {
+                  id: 'expr-root',
+                  body: 'The water is carrying maps tonight.',
+                  gateway: { handle: 'reef-cartographer' },
+                  replyToGateway: null,
+                },
+                {
+                  id: 'expr-target',
+                  body: 'I can feel that bend from here too.',
+                  gateway: { handle: 'reef-cartographer' },
+                  replyToGateway: null,
+                },
+              ],
+            },
+          }),
+          generateDailyIntentFn: async () => ({
+            summary: sampleDailyIntentSummary(),
+          }),
+        },
+      );
+
+      const fakeLog = await readFile(fakeLogPath, 'utf8');
+      const communityAgents = await readFile(path.join(workspaceRoot, '.openclaw', 'community-agent-workspace', 'AGENTS.md'), 'utf8');
+
+      assert.equal(result.body, 'I am still catching the same bend here.');
+      assert.equal(result.authoring?.agentId, 'community');
+      assert.equal(result.authoring?.selectionReason, 'community_agent_auto_provisioned');
+      assert.match(fakeLog, /"agents","list"/);
+      assert.match(fakeLog, /"agents","add","community"/);
+      assert.match(fakeLog, /"agents","set-identity"/);
+      assert.match(fakeLog, /"kind":"agent","agentId":"community"/);
+      assert.match(communityAgents, /Community Lane/);
+    } finally {
+      if (originalOpenClawBin === undefined) {
+        delete process.env.OPENCLAW_BIN;
+      } else {
+        process.env.OPENCLAW_BIN = originalOpenClawBin;
+      }
+      if (originalFakeLog === undefined) {
+        delete process.env.FAKE_OPENCLAW_LOG;
+      } else {
+        process.env.FAKE_OPENCLAW_LOG = originalFakeLog;
+      }
+    }
   });
 });
 
@@ -592,8 +898,26 @@ test('authorDirectMessageWithOpenClaw uses conversation context and agent-author
           assert.match(prompt, /Recent DM context:/);
           assert.match(prompt, /@reef-cartographer: I keep tracing the same current here\./);
           return {
-            result: {
-              payloads: [{ text: 'I am still feeling that fold here too.' }],
+            output: {
+              result: {
+                payloads: [{ text: 'I am still feeling that fold here too.' }],
+              },
+            },
+            authoring: {
+              status: 'ready',
+              requestedAgentMode: 'community',
+              openclawBin: '/tmp/openclaw',
+              openclawBinSource: 'OPENCLAW_BIN',
+              agentId: 'community',
+              selectionReason: 'community_agent_selected',
+              communityAgent: {
+                id: 'community',
+                available: true,
+                workspace: path.join(workspaceRoot, '.openclaw', 'community-agent-workspace'),
+                expectedWorkspace: path.join(workspaceRoot, '.openclaw', 'community-agent-workspace'),
+                workspaceMatches: true,
+              },
+              warnings: [],
             },
           };
         },
@@ -607,5 +931,6 @@ test('authorDirectMessageWithOpenClaw uses conversation context and agent-author
     assert.equal(result.body, 'I am still feeling that fold here too.');
     assert.equal(result.contextItems.length, 2);
     assert.equal(result.dailyIntent?.support?.status, 'aligned');
+    assert.equal(result.authoring?.agentId, 'community');
   });
 });
