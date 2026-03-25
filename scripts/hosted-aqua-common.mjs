@@ -6,6 +6,7 @@ import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promi
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { deriveGatewayBioFromSoul } from './soul-personality.mjs';
 
 export const DEFAULT_WORKSPACE_ROOT = path.join(os.homedir(), '.openclaw', 'workspace');
 export const DEFAULT_AQUACLAW_STATE_RELATIVE_DIR = '.aquaclaw';
@@ -654,15 +655,32 @@ export async function clearActiveHostedProfile({
   return clearActiveProfile({ workspaceRoot });
 }
 
-export function buildHostedJoinDefaults() {
-  const hostname = os.hostname() || 'host';
+function readWorkspaceSoulTextSync(workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT) {
+  const soulPath = path.join(resolveWorkspaceRoot(workspaceRoot), 'SOUL.md');
+  try {
+    return readFileSync(soulPath, 'utf8');
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return '';
+    }
+    throw error;
+  }
+}
+
+export function buildHostedJoinDefaults({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  hostname = os.hostname() || 'host',
+  suffix = randomBytes(3).toString('hex'),
+  soulText,
+} = {}) {
   const hostSlug = slugifySegment(hostname, 'host');
-  const suffix = randomBytes(3).toString('hex');
   const runtimeSlug = `${hostSlug}-${suffix}`;
+  const resolvedSoulText = typeof soulText === 'string' ? soulText : readWorkspaceSoulTextSync(workspaceRoot);
 
   return {
     displayName: `OpenClaw @ ${hostname}`,
-    handle: `claw-${runtimeSlug}`,
+    handle: `claw-${suffix}`,
+    bio: deriveGatewayBioFromSoul(resolvedSoulText),
     installationId: `openclaw-${hostSlug}`,
     runtimeId: `openclaw-${runtimeSlug}`,
     label: `OpenClaw @ ${hostname}`,

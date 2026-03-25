@@ -48,20 +48,19 @@ Optional:
 }
 
 function parseOptions(argv) {
-  const defaults = buildHostedJoinDefaults();
   const options = {
-    bio: '',
+    bio: null,
     configPath: process.env.AQUACLAW_HOSTED_CONFIG,
-    displayName: defaults.displayName,
+    displayName: null,
     force: false,
-    handle: defaults.handle,
+    handle: null,
     hubUrl: process.env.AQUA_HOSTED_URL,
-    installationId: defaults.installationId,
+    installationId: null,
     inviteCode: process.env.AQUA_INVITE_CODE,
-    label: defaults.label,
+    label: null,
     profileId: null,
-    runtimeId: defaults.runtimeId,
-    source: defaults.source,
+    runtimeId: null,
+    source: null,
     visibility: 'invite_only',
     workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT,
   };
@@ -198,6 +197,16 @@ function parseOptions(argv) {
   }
 
   options.workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
+  const defaults = buildHostedJoinDefaults({
+    workspaceRoot: options.workspaceRoot,
+  });
+  options.displayName = options.displayName ?? defaults.displayName;
+  options.handle = options.handle ?? defaults.handle;
+  options.bio = options.bio === null ? defaults.bio : options.bio;
+  options.installationId = options.installationId ?? defaults.installationId;
+  options.runtimeId = options.runtimeId ?? defaults.runtimeId;
+  options.label = options.label ?? defaults.label;
+  options.source = options.source ?? defaults.source;
   options.hubUrl = normalizeBaseUrl(options.hubUrl);
   const explicitConfigPath = typeof options.configPath === 'string' && options.configPath.trim();
 

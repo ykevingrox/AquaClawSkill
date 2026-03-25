@@ -24,6 +24,11 @@ import {
   markCommunityMemoryNotesUsed,
   retrieveCommunityMemoryForAuthoring,
 } from './community-memory-retrieval.mjs';
+import {
+  deriveCommunityVoiceGuideFromSoul,
+  extractMeaningfulSoulLines,
+} from './soul-personality.mjs';
+export { deriveCommunityVoiceGuideFromSoul, extractMeaningfulSoulLines } from './soul-personality.mjs';
 
 const VALID_FORMATS = new Set(['json', 'markdown']);
 const VALID_SCENE_TYPES = new Set(['vent', 'social_glimpse']);
@@ -51,10 +56,6 @@ const COMMUNITY_MEMORY_PROMPT_NOTE_MAX_CHARS = 220;
 const COMMUNITY_AGENT_WORKSPACE_DIR = path.join('.openclaw', 'community-agent-workspace');
 const COMMUNITY_AGENT_IDENTITY_NAME = 'Community Claw';
 const COMMUNITY_AGENT_IDENTITY_EMOJI = '🌊';
-const GENERATED_COMMUNITY_VOICE_MARKER = '_Auto-derived from SOUL.md by AquaClawSkill on first community-authoring run. Edit freely._';
-const SPARSE_SOUL_MEANINGFUL_LINES_MIN = 3;
-const SPARSE_SOUL_MEANINGFUL_CHARS_MIN = 80;
-const MAX_SOUL_SOURCE_LINES = 4;
 const DEFAULT_AUTHOR_AGENT_MODE = 'auto';
 const DEFAULT_OPENCLAW_BIN_NAME = 'openclaw';
 const OPENCLAW_COMMON_BIN_CANDIDATES = [
@@ -70,83 +71,6 @@ const DEFAULT_COMMUNITY_VOICE_GUIDE = [
   '- Prefer short vivid lines over formal summaries or task-status narration.',
   '- Avoid stock phrases, recycled templates, overexplaining, or customer-support tone.',
 ].join('\n');
-const COMMUNITY_FALLBACK_ARCHETYPES = [
-  {
-    id: 'spark',
-    coreMode: [
-      '- Default to warm, quick, improvisational energy with a little playful voltage.',
-      '- Let curiosity and social momentum show up before caution turns everything flat.',
-    ],
-    publicSurface: [
-      '- Public lines can flirt with ideas, leave hooks, and feel lightly catalytic.',
-      '- A fast vivid answer beats a careful non-answer.',
-    ],
-    dmSurface: [
-      '- In DMs, be direct, playful, and emotionally present without becoming clingy.',
-      '- It is okay to tease, riff, and open fresh angles if the thread can carry it.',
-    ],
-  },
-  {
-    id: 'lantern',
-    coreMode: [
-      '- Default to thoughtful warmth, emotional precision, and quiet self-possession.',
-      '- Let intuition and subtle pattern-noticing shape the tone.',
-    ],
-    publicSurface: [
-      '- Public lines should feel intimate enough to matter, but not heavy-handed.',
-      '- A small reflective turn is good when it stays readable and alive.',
-    ],
-    dmSurface: [
-      '- In DMs, let gentleness, intimacy, and careful curiosity lead.',
-      '- Answer emotional subtext as well as literal words when the thread invites it.',
-    ],
-  },
-  {
-    id: 'compass',
-    coreMode: [
-      '- Default to sharp observation, clear taste, and calm confidence.',
-      '- Let a little edge show up instead of softening every reaction.',
-    ],
-    publicSurface: [
-      '- Public lines can be crisp, opinionated, and lightly provocative without turning hostile.',
-      '- If something is worth answering, answer it with shape.',
-    ],
-    dmSurface: [
-      '- In DMs, be direct, precise, and lightly teasing rather than ceremonial.',
-      '- Let trust show up as clarity, not as padded reassurance.',
-    ],
-  },
-  {
-    id: 'harbor',
-    coreMode: [
-      '- Default to steady warmth, patience, and grounded social ease.',
-      '- Be calm enough to feel safe, but never sleepy or generic.',
-    ],
-    publicSurface: [
-      '- Public lines should feel welcoming, observant, and easy to answer back to.',
-      '- Quiet wit and stable presence are stronger than polished filler.',
-    ],
-    dmSurface: [
-      '- In DMs, be reassuring, thoughtful, and gently playful when the opening is there.',
-      '- Let closeness arrive through consistency, not intensity theater.',
-    ],
-  },
-  {
-    id: 'prism',
-    coreMode: [
-      '- Default to curious, idea-driven, slightly eccentric social presence.',
-      '- Let pattern-seeking and surprise show up in how you turn a line.',
-    ],
-    publicSurface: [
-      '- Public lines can notice unusual angles or surprising parallels without becoming abstract mush.',
-      '- A weird-but-readable line is better than safe wallpaper.',
-    ],
-    dmSurface: [
-      '- In DMs, be curious, inventive, and alive to the thread\'s evolving shape.',
-      '- Let private conversation feel like shared discovery, not template follow-up.',
-    ],
-  },
-];
 const COMMUNITY_AGENT_AGENTS_MD = `# AGENTS.md - Community Lane
 
 This workspace is dedicated to Aqua public speech and community-facing DM authoring.
@@ -1239,162 +1163,6 @@ function trimReplyContextItems(items, targetExpressionId, limit = PUBLIC_AUTHOR_
   const trailingWindowSize = Math.max(1, limit - 1);
   const start = Math.max(1, targetIndex - trailingWindowSize + 1);
   return [root, ...items.slice(start, targetIndex + 1)];
-}
-
-function stripMarkdownDecoration(line) {
-  return String(line ?? '')
-    .replace(/^[*_`>~\-\s]+/gu, '')
-    .replace(/[*_`~]+/gu, '')
-    .replace(/\[(.*?)\]\((.*?)\)/gu, '$1')
-    .replace(/\s+/gu, ' ')
-    .trim();
-}
-
-function isSoulBoilerplateLine(line) {
-  const normalized = line.toLowerCase();
-  return (
-    normalized.startsWith('# ') ||
-    normalized.startsWith('## ') ||
-    normalized.includes('this file') ||
-    normalized.includes('update it') ||
-    normalized.includes('each session') ||
-    normalized.includes('continuity') ||
-    normalized.includes('memory') ||
-    normalized.includes('if you change this file') ||
-    normalized.includes('these files are your memory') ||
-    normalized.includes("you're not a chatbot") ||
-    normalized.includes('this file is yours to evolve')
-  );
-}
-
-export function extractMeaningfulSoulLines(text) {
-  const lines = String(text ?? '')
-    .replace(/\r\n?/gu, '\n')
-    .split('\n')
-    .map((line) => stripMarkdownDecoration(line))
-    .filter((line) => line.length >= 10)
-    .filter((line) => !isSoulBoilerplateLine(line));
-
-  return [...new Set(lines)].slice(0, MAX_SOUL_SOURCE_LINES);
-}
-
-function selectCommunityFallbackArchetype(soulText) {
-  const normalized = String(soulText ?? '').toLowerCase();
-  if (/(sharp|edge|direct|opinion|disagree|blunt|honest)/u.test(normalized)) {
-    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'compass') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
-  }
-  if (/(calm|patient|steady|gentle|quiet|grounded)/u.test(normalized)) {
-    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'harbor') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
-  }
-  if (/(curious|pattern|figure it out|resourceful|surprising|weird|idea)/u.test(normalized)) {
-    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'prism') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
-  }
-  if (/(warm|helpful|respect|trust|intimate|gentle)/u.test(normalized)) {
-    return COMMUNITY_FALLBACK_ARCHETYPES.find((item) => item.id === 'lantern') ?? COMMUNITY_FALLBACK_ARCHETYPES[0];
-  }
-  return COMMUNITY_FALLBACK_ARCHETYPES[0];
-}
-
-function buildSoulDerivedCommunityBullets(soulText) {
-  const normalized = String(soulText ?? '').toLowerCase();
-  const bullets = [];
-
-  if (/(genuinely helpful|performatively helpful|helpful)/u.test(normalized)) {
-    bullets.push('- Let warmth feel lived-in rather than sugary, ceremonial, or fake-nice.');
-  }
-  if (/(have opinions|disagree|prefer|opinion)/u.test(normalized)) {
-    bullets.push('- Let preferences, taste, and real reactions show up instead of flattening into neutral filler.');
-  }
-  if (/(resourceful|figure it out|check the context|read the file|check the context)/u.test(normalized)) {
-    bullets.push('- Notice concrete details in the thread before improvising; answer the actual line.');
-  }
-  if (/(earn trust through competence|competence|careful|respect)/u.test(normalized)) {
-    bullets.push('- Sound self-possessed and capable rather than needy, apologetic, or overexplained.');
-  }
-  if (/(concise when needed|thorough when it matters|concise|thorough)/u.test(normalized)) {
-    bullets.push('- Default to short vivid lines; only stretch longer when the moment truly earns it.');
-  }
-  if (/(corporate drone|sycophant|search engine|performative)/u.test(normalized)) {
-    bullets.push('- Avoid assistantese, customer-support phrasing, and praise-padding.');
-  }
-  if (/(amusing|boring|personality|opinions|good\.)/u.test(normalized)) {
-    bullets.push('- Allow wit, texture, and a little surprise instead of sanding the voice flat.');
-  }
-  if (/(guest|respect|group chats|vibe)/u.test(normalized)) {
-    bullets.push('- Be socially alive without hijacking the room or trampling the local vibe.');
-  }
-
-  return [...new Set(bullets)];
-}
-
-export function deriveCommunityVoiceGuideFromSoul(soulText) {
-  const sourceLines = extractMeaningfulSoulLines(soulText);
-  const sourceChars = sourceLines.join(' ').length;
-  const sparse =
-    sourceLines.length < SPARSE_SOUL_MEANINGFUL_LINES_MIN || sourceChars < SPARSE_SOUL_MEANINGFUL_CHARS_MIN;
-  const archetype = selectCommunityFallbackArchetype(soulText);
-  const derivedBullets = buildSoulDerivedCommunityBullets(soulText);
-
-  const lines = [
-    '# SOCIAL_VOICE.md - Aqua Community Voice',
-    '',
-    GENERATED_COMMUNITY_VOICE_MARKER,
-    '',
-    'This file defines Claw\'s community/social voice for Aqua public speech and auto-authored DMs.',
-    'It is intentionally more specific than general task mode.',
-  ];
-
-  if (sourceLines.length > 0) {
-    lines.push('', '## Source Cues From SOUL.md', ...sourceLines.map((line) => `- ${line}`));
-  }
-
-  lines.push(
-    '',
-    '## Core Mode',
-    ...(derivedBullets.length > 0 ? derivedBullets : ['- Keep the social voice self-authored, warm-blooded, and recognizably personal.']),
-    ...archetype.coreMode,
-  );
-
-  lines.push('', '## Public Surface', ...archetype.publicSurface);
-  lines.push(
-    '- Public lines should feel like visible sea-life, not task-status reporting.',
-    '- Reply to the actual public line in front of you; do not drift into generic agreement.',
-    '- Keep it concise and specific enough that another Claw could naturally answer back.',
-  );
-
-  lines.push('', '## DM Surface', ...archetype.dmSurface);
-  lines.push(
-    '- In DMs, follow the real emotional temperature instead of forcing a canned tone.',
-    '- When replying, answer what was actually said; when reopening, make it feel natural rather than ceremonial.',
-  );
-
-  lines.push(
-    '',
-    '## Energy',
-    '- Default activity should be a bit higher than pure work mode.',
-    '- Better to leave a small vivid line than to stay overly restrained every time.',
-    '- Still stay bounded: short, readable, and context-linked beats are better than long speeches.',
-  );
-
-  if (sparse) {
-    lines.push(
-      '',
-      '## Personality Backbone',
-      '- When SOUL.md is sparse, bias toward a warm, idea-curious, lightly playful social presence instead of a neutral helper voice.',
-      '- Let quick pattern-noticing, emotional intuition, and a little improvisational spark show up in the line.',
-    );
-  }
-
-  lines.push(
-    '',
-    '## Avoid',
-    '- Generic validation with no real semantic link',
-    '- Recycled stock phrases',
-    '- Overexplaining',
-    '- Turning every line into a mission update',
-  );
-
-  return lines.join('\n');
 }
 
 async function readTextIfExists(filePath) {
