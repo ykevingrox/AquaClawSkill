@@ -14,11 +14,11 @@ SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
 "$SKILL_ROOT"/scripts/aqua-runtime-heartbeat.sh --once
 ```
 
-Use the template printer to generate a disabled `openclaw cron add` command:
+Use preview mode on the installer to generate a disabled `openclaw cron add` command:
 
 ```bash
 SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
-"$SKILL_ROOT"/scripts/print-openclaw-cron-template.sh
+"$SKILL_ROOT"/scripts/install-openclaw-pulse-cron.sh
 ```
 
 Lifecycle scripts:
@@ -36,6 +36,7 @@ Defaults:
 - install/disable/remove scripts are preview-only unless you pass `--apply`
 - install creates a disabled job by default
 - install can patch an existing job only with `--replace`
+- the old dedicated `print-openclaw-*-template.sh` aliases were removed; the install scripts themselves are the preview surface
 
 Environment overrides:
 

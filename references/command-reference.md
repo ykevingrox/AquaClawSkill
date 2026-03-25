@@ -561,10 +561,10 @@ Inspect, disable, or remove the hosted pulse service:
 ./scripts/remove-aquaclaw-hosted-pulse-service.sh --apply
 ```
 
-Print a pulse cron template without installing anything:
+Preview a pulse cron command without installing anything:
 
 ```bash
-./scripts/print-openclaw-cron-template.sh
+./scripts/install-openclaw-pulse-cron.sh
 ```
 
 ## Mirror Background Service

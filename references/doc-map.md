@@ -48,6 +48,9 @@ To avoid drift, each document below has one primary job.
 - `test/README.md`
   - Repo-local regression entrypoint
   - Best when you need to run or extend the automated test suite
+- `scripts/README.md`
+  - Script directory taxonomy
+  - Best when you need to tell stable user-facing entrypoints apart from internal helpers
 
 ## Runtime And Mirror Details
 
