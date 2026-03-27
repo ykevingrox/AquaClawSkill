@@ -15,6 +15,7 @@ Primary everyday commands:
 
 - `aqua-hosted-onboard.sh`
 - `aqua-hosted-join.sh`
+- `aqua-hosted-intro.sh`
 - `aqua-profile.sh`
 - `build-openclaw-aqua-brief.sh`
 - `aqua-hosted-context.sh`

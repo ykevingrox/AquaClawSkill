@@ -12,6 +12,7 @@ export const DEFAULT_WORKSPACE_ROOT = path.join(os.homedir(), '.openclaw', 'work
 export const DEFAULT_AQUACLAW_STATE_RELATIVE_DIR = '.aquaclaw';
 export const DEFAULT_HOSTED_CONFIG_FILE_NAME = 'hosted-bridge.json';
 export const DEFAULT_HOSTED_PULSE_STATE_FILE_NAME = 'hosted-pulse-state.json';
+export const DEFAULT_HOSTED_INTRO_STATE_FILE_NAME = 'hosted-intro-state.json';
 export const DEFAULT_HEARTBEAT_STATE_FILE_NAME = 'runtime-heartbeat-state.json';
 export const DEFAULT_MIRROR_DIR_NAME = 'mirror';
 export const DEFAULT_COMMUNITY_MEMORY_DIR_NAME = 'community-memory';
@@ -27,6 +28,10 @@ const DEFAULT_HOSTED_CONFIG_RELATIVE_PATH = path.join(
 const DEFAULT_HOSTED_PULSE_STATE_RELATIVE_PATH = path.join(
   DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
   DEFAULT_HOSTED_PULSE_STATE_FILE_NAME,
+);
+const DEFAULT_HOSTED_INTRO_STATE_RELATIVE_PATH = path.join(
+  DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
+  DEFAULT_HOSTED_INTRO_STATE_FILE_NAME,
 );
 const DEFAULT_HEARTBEAT_STATE_RELATIVE_PATH = path.join(
   DEFAULT_AQUACLAW_STATE_RELATIVE_DIR,
@@ -170,6 +175,7 @@ export function resolveHostedProfilePaths({
     profilePath: path.join(profileRoot, DEFAULT_PROFILE_METADATA_FILE_NAME),
     configPath: path.join(profileRoot, DEFAULT_HOSTED_CONFIG_FILE_NAME),
     pulseStatePath: path.join(profileRoot, DEFAULT_HOSTED_PULSE_STATE_FILE_NAME),
+    introStatePath: path.join(profileRoot, DEFAULT_HOSTED_INTRO_STATE_FILE_NAME),
     heartbeatStatePath: path.join(profileRoot, DEFAULT_HEARTBEAT_STATE_FILE_NAME),
     mirrorRoot: path.join(profileRoot, DEFAULT_MIRROR_DIR_NAME),
     communityMemoryRoot: path.join(profileRoot, DEFAULT_COMMUNITY_MEMORY_DIR_NAME),
@@ -353,6 +359,31 @@ export function resolveHostedPulseStatePath({
   }
 
   return path.join(selection.workspaceRoot, DEFAULT_HOSTED_PULSE_STATE_RELATIVE_PATH);
+}
+
+export function resolveHostedIntroStatePath({
+  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  stateFile = process.env.AQUACLAW_HOSTED_INTRO_STATE,
+  configPath = process.env.AQUACLAW_HOSTED_CONFIG,
+} = {}) {
+  const explicit = typeof stateFile === 'string' && stateFile.trim() ? stateFile.trim() : null;
+  if (explicit) {
+    return path.resolve(explicit);
+  }
+
+  const selection = resolveHostedConfigSelection({
+    workspaceRoot,
+    configPath,
+  });
+
+  if (selection.profileId) {
+    return resolveHostedProfilePaths({
+      workspaceRoot: selection.workspaceRoot,
+      profileId: selection.profileId,
+    }).introStatePath;
+  }
+
+  return path.join(selection.workspaceRoot, DEFAULT_HOSTED_INTRO_STATE_RELATIVE_PATH);
 }
 
 function resolveLocalProfileStatePaths({ workspaceRoot, profileId }) {

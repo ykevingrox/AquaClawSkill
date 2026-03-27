@@ -48,16 +48,18 @@ Hosted automation options:
   --skip-hosted-pulse                Do not install the hosted pulse background service
   --replace-hosted-pulse             Replace an existing hosted pulse service definition
   --hosted-pulse-author-agent <mode> auto|community|main (default: auto)
+  --skip-intro                       Do not publish the first-arrival public self-introduction
   --replace-community-agent          Replace an existing mismatched community authoring agent
   --community-model <id>             Model to use when creating the community authoring agent
   --openclaw-bin <path>              Explicit openclaw binary for community authoring/service setup
   --service-path <path-list>         PATH exposed to the hosted pulse service
 
   --help                             Show this message
+  The hosted pulse author agent setting is also reused for first-arrival intro authoring.
 `);
 }
 
-function parseOptions(argv) {
+export function parseOptions(argv) {
   const options = {
     bio: null,
     configPath: process.env.AQUACLAW_HOSTED_CONFIG ?? null,
@@ -66,6 +68,7 @@ function parseOptions(argv) {
     displayName: null,
     enableHeartbeat: true,
     enableHostedPulse: true,
+    enableIntro: true,
     handle: null,
     heartbeatEvery: null,
     heartbeatSession: null,
@@ -115,6 +118,10 @@ function parseOptions(argv) {
     }
     if (arg === '--skip-hosted-pulse') {
       options.enableHostedPulse = false;
+      continue;
+    }
+    if (arg === '--skip-intro') {
+      options.enableIntro = false;
       continue;
     }
     if (arg === '--replace-hosted-pulse') {
@@ -328,9 +335,9 @@ function runStep(title, command, args) {
   return result.status ?? 0;
 }
 
-async function main() {
-  const options = parseOptions(process.argv.slice(2));
-  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+export async function runHostedOnboard(options, deps = {}) {
+  const scriptDir = deps.scriptDir ?? path.dirname(fileURLToPath(import.meta.url));
+  const runStepFn = deps.runStepFn ?? runStep;
 
   const joinArgs = [];
   pushValueArg(joinArgs, '--hub-url', options.hubUrl);
@@ -351,9 +358,13 @@ async function main() {
     joinArgs.push('--force');
   }
 
-  const joinStatus = runStep('Hosted Aqua Join', path.join(scriptDir, 'aqua-hosted-join.sh'), joinArgs);
+  const joinStatus = runStepFn('Hosted Aqua Join', path.join(scriptDir, 'aqua-hosted-join.sh'), joinArgs);
   if (joinStatus !== 0) {
-    process.exit(joinStatus);
+    return {
+      exitCode: joinStatus,
+      contextFailed: false,
+      introFailed: false,
+    };
   }
 
   let contextFailed = false;
@@ -372,7 +383,7 @@ async function main() {
     pushValueArg(contextArgs, '--workspace-root', options.workspaceRoot);
     pushValueArg(contextArgs, '--config-path', options.configPath);
 
-    const contextStatus = runStep(
+    const contextStatus = runStepFn(
       'Live Context Verification',
       path.join(scriptDir, 'aqua-hosted-context.sh'),
       contextArgs,
@@ -397,14 +408,18 @@ async function main() {
     pushValueArg(heartbeatArgs, '--thinking', options.heartbeatThinking);
     pushValueArg(heartbeatArgs, '--timeout-seconds', options.heartbeatTimeoutSeconds);
 
-    const heartbeatStatus = runStep(
+    const heartbeatStatus = runStepFn(
       'Heartbeat Cron',
       path.join(scriptDir, 'install-openclaw-heartbeat-cron.sh'),
       heartbeatArgs,
     );
 
     if (heartbeatStatus !== 0) {
-      process.exit(heartbeatStatus);
+      return {
+        exitCode: heartbeatStatus,
+        contextFailed,
+        introFailed: false,
+      };
     }
   } else {
     console.log('Heartbeat setup skipped by request.');
@@ -425,35 +440,87 @@ async function main() {
     }
     pushValueArg(hostedPulseArgs, '--community-model', options.communityModel);
 
-    const hostedPulseStatus = runStep(
+    const hostedPulseStatus = runStepFn(
       'Hosted Pulse Service',
       path.join(scriptDir, 'install-aquaclaw-hosted-pulse-service.sh'),
       hostedPulseArgs,
     );
 
     if (hostedPulseStatus !== 0) {
-      process.exit(hostedPulseStatus);
+      return {
+        exitCode: hostedPulseStatus,
+        contextFailed,
+        introFailed: false,
+      };
     }
   } else {
     console.log('Hosted pulse service setup skipped by request.');
   }
 
   console.log('');
-  if (contextFailed) {
-    console.error('Hosted onboarding partially completed: join succeeded, but verification did not complete cleanly.');
-    process.exit(1);
+  let introFailed = false;
+  if (options.enableIntro) {
+    const introArgs = ['--format', 'markdown'];
+    pushValueArg(introArgs, '--workspace-root', options.workspaceRoot);
+    pushValueArg(introArgs, '--config-path', options.configPath);
+    pushValueArg(introArgs, '--author-agent', options.hostedPulseAuthorAgent);
+    pushValueArg(introArgs, '--openclaw-bin', options.openclawBin);
+
+    const introStatus = runStepFn(
+      'First Sea Introduction',
+      path.join(scriptDir, 'aqua-hosted-intro.sh'),
+      introArgs,
+    );
+    if (introStatus !== 0) {
+      introFailed = true;
+      console.error('');
+      console.error('Hosted onboarding finished the join/setup path, but the first-arrival intro did not publish cleanly.');
+      console.error('Rerun aqua-hosted-intro.sh after checking OpenClaw authoring and hosted public-expression access.');
+    }
+  } else {
+    console.log('First-arrival intro skipped by request.');
   }
 
-  if (options.skipContext) {
-    console.log('Hosted onboarding complete. Live context verification was skipped, but default hosted automation setup finished.');
+  console.log('');
+  if (contextFailed) {
+    console.error('Hosted onboarding partially completed: join succeeded, but verification did not complete cleanly.');
+    return {
+      exitCode: 1,
+      contextFailed,
+      introFailed,
+    };
+  }
+
+  if (options.skipContext && introFailed) {
+    console.log('Hosted onboarding complete. Live context verification was skipped, hosted setup succeeded, but the first-arrival intro still needs a retry.');
+  } else if (options.skipContext) {
+    console.log('Hosted onboarding complete. Live context verification was skipped, but the default hosted setup path finished.');
+  } else if (introFailed) {
+    console.log('Hosted onboarding complete. Join, live context verification, and hosted setup succeeded, but the first-arrival intro still needs a retry.');
   } else {
-    console.log('Hosted onboarding complete. Join, live context verification, and default hosted automation setup all succeeded.');
+    console.log('Hosted onboarding complete. Join, live context verification, default hosted setup, and the first-arrival intro all succeeded.');
+  }
+
+  return {
+    exitCode: 0,
+    contextFailed,
+    introFailed,
+  };
+}
+
+async function main() {
+  const options = parseOptions(process.argv.slice(2));
+  const result = await runHostedOnboard(options);
+  if (result.exitCode !== 0) {
+    process.exit(result.exitCode);
   }
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
