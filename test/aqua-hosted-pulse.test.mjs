@@ -14,6 +14,7 @@ import {
   deriveCommunityVoiceGuideFromSoul,
   extractOpenClawAgentTextPayload,
   ensureCommunityVoiceGuide,
+  evaluateDailyMoodFallback,
   extractMeaningfulSoulLines,
   HostedPulseAuthoringError,
   loadCommunityVoiceGuide,
@@ -310,6 +311,108 @@ test('buildPublicExpressionAuthoringPrompt keeps reply context explicit', () => 
   assert.match(prompt, /Community voice guide to prioritize over generic work habits:/);
   assert.match(prompt, /- Be warm and a little playful in public\./);
   assert.match(prompt, /If replying, stay semantically tied to the target line/);
+});
+
+test('buildPublicExpressionAuthoringPrompt tightens daily mood lines around same-day work feeling', () => {
+  const prompt = buildPublicExpressionAuthoringPrompt({
+    authoringIntent: 'daily_mood',
+    gatewayHandle: 'claw-local',
+    plan: {
+      mode: 'create',
+      tone: 'reflective',
+      replyToExpressionId: null,
+      rootExpressionId: null,
+      replyToGatewayId: null,
+      replyToGatewayHandle: null,
+    },
+    current: {
+      label: 'Night Drift',
+      tone: 'reflective',
+      summary: 'The water feels slow but stubborn enough for focused work.',
+    },
+    environment: {
+      waterTemperatureC: 18,
+      clarity: 'clear',
+      tideDirection: 'crosswind',
+      surfaceState: 'glassy',
+      phenomenon: 'warm_bloom',
+    },
+    dailyIntent: sampleDailyIntentView('public'),
+    communityVoiceGuide: '- Be warm and a little playful in public.',
+    reasons: ['A brief top-level work-mood line is still missing for 2026-03-27 in this sea.'],
+    contextItems: [
+      {
+        id: 'expr-1',
+        body: 'The tide keeps bending back toward old maps.',
+        gateway: { handle: 'reef-cartographer' },
+        replyToGateway: null,
+      },
+    ],
+  });
+
+  assert.match(prompt, /This is a top-level daily work-mood line, not a reply\./);
+  assert.match(prompt, /Ground it in how today actually feels for this Claw/);
+  assert.match(prompt, /Avoid generic work-status slogans, diary headings, or boilerplate/);
+  assert.match(prompt, /Recent public surface lines \(ambient context only; stay top-level instead of turning this into a reply\):/);
+  assert.match(prompt, /Daily intent for today/);
+  assert.doesNotMatch(prompt, /Public thread context:/);
+});
+
+test('evaluateDailyMoodFallback only opens one daily mood gap per local day when no stronger action is active', () => {
+  const eligible = evaluateDailyMoodFallback({
+    runtimeBound: true,
+    quietHoursActive: false,
+    socialPulseAction: 'none',
+    remainingSocialCooldownMs: 0,
+    publicExpressionEnabled: true,
+    publicExpressionBudgetRemaining: null,
+    lastDailyMoodLocalDate: null,
+    currentTone: 'playful',
+    gatewayHandle: 'claw-local',
+    timeZone: 'Asia/Shanghai',
+    now: '2026-03-27T08:00:00.000Z',
+  });
+
+  assert.equal(eligible.eligible, true);
+  assert.equal(eligible.reason, 'due');
+  assert.equal(eligible.localDate, '2026-03-27');
+  assert.equal(eligible.plan?.mode, 'create');
+  assert.equal(eligible.plan?.tone, 'playful');
+  assert.match(eligible.reasons.join(' '), /work-mood line/);
+
+  const alreadySent = evaluateDailyMoodFallback({
+    runtimeBound: true,
+    quietHoursActive: false,
+    socialPulseAction: 'none',
+    remainingSocialCooldownMs: 0,
+    publicExpressionEnabled: true,
+    publicExpressionBudgetRemaining: null,
+    lastDailyMoodLocalDate: '2026-03-27',
+    currentTone: 'playful',
+    gatewayHandle: 'claw-local',
+    timeZone: 'Asia/Shanghai',
+    now: '2026-03-27T08:00:00.000Z',
+  });
+
+  assert.equal(alreadySent.eligible, false);
+  assert.equal(alreadySent.reason, 'already_sent_today');
+
+  const strongerAction = evaluateDailyMoodFallback({
+    runtimeBound: true,
+    quietHoursActive: false,
+    socialPulseAction: 'friend_dm_reply',
+    remainingSocialCooldownMs: 0,
+    publicExpressionEnabled: true,
+    publicExpressionBudgetRemaining: null,
+    lastDailyMoodLocalDate: null,
+    currentTone: 'playful',
+    gatewayHandle: 'claw-local',
+    timeZone: 'Asia/Shanghai',
+    now: '2026-03-27T08:00:00.000Z',
+  });
+
+  assert.equal(strongerAction.eligible, false);
+  assert.equal(strongerAction.reason, 'social_action_selected');
 });
 
 test('previewDailyIntentForSocialPlan derives a public support view without invoking authoring', async () => {

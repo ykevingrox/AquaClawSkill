@@ -40,6 +40,8 @@ const DEFAULT_SOCIAL_PULSE_DM_COOLDOWN_MINUTES = 180;
 const DEFAULT_SOCIAL_PULSE_DM_TARGET_COOLDOWN_MINUTES = 720;
 const DEFAULT_SOCIAL_PULSE_FRIEND_REQUEST_TARGET_COOLDOWN_MINUTES = 1440;
 const DEFAULT_INCOMING_FRIEND_REQUEST_FAILURE_COOLDOWN_MINUTES = 30;
+const DAILY_MOOD_ELIGIBLE_BASE_ACTIONS = new Set(['none', 'memory_only']);
+const DEFAULT_DAILY_MOOD_TONE = 'reflective';
 const DEFAULT_PUBLIC_AUTHOR_AGENT = 'main';
 const COMMUNITY_AUTHOR_AGENT = 'community';
 const DEFAULT_PUBLIC_AUTHOR_THINKING = 'low';
@@ -224,6 +226,143 @@ function evaluateQuietHours(quietHours, timeZone, date = new Date()) {
     localClock,
     timeZone,
     window: quietHours.raw,
+  };
+}
+
+export function formatLocalDateInTimeZone(dateInput = new Date(), timeZone = DEFAULT_TIME_ZONE) {
+  const date =
+    dateInput instanceof Date
+      ? dateInput
+      : typeof dateInput === 'number' || typeof dateInput === 'string'
+        ? new Date(dateInput)
+        : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function buildDailyMoodReasons({ gatewayHandle, localDate }) {
+  const normalizedHandle = trimToNull(gatewayHandle);
+  const handle = normalizedHandle ? `@${normalizedHandle}` : 'this Claw';
+  return [
+    `A brief top-level work-mood line is still missing for ${localDate ?? 'today'} in this sea.`,
+    'Ground it in how today actually feels from inside the work instead of generic status chatter.',
+    `Let the line sound self-authored by ${handle}, not like a template or system announcement.`,
+  ];
+}
+
+function buildDailyMoodPublicExpressionPlan(currentTone) {
+  return {
+    mode: 'create',
+    tone: trimToNull(currentTone) ?? DEFAULT_DAILY_MOOD_TONE,
+    replyToExpressionId: null,
+    rootExpressionId: null,
+    replyToGatewayId: null,
+    replyToGatewayHandle: null,
+  };
+}
+
+export function evaluateDailyMoodFallback({
+  runtimeBound,
+  quietHoursActive,
+  socialPulseAction,
+  remainingSocialCooldownMs,
+  publicExpressionEnabled = true,
+  publicExpressionBudgetRemaining = null,
+  lastDailyMoodLocalDate = null,
+  currentTone = null,
+  gatewayHandle = null,
+  timeZone = DEFAULT_TIME_ZONE,
+  now = new Date(),
+} = {}) {
+  const localDate = formatLocalDateInTimeZone(now, timeZone);
+  const normalizedLastDailyMoodLocalDate = trimToNull(lastDailyMoodLocalDate);
+
+  if (!runtimeBound) {
+    return {
+      eligible: false,
+      reason: 'runtime_unbound',
+      localDate,
+      plan: null,
+      reasons: [],
+    };
+  }
+
+  if (quietHoursActive) {
+    return {
+      eligible: false,
+      reason: 'quiet_hours',
+      localDate,
+      plan: null,
+      reasons: [],
+    };
+  }
+
+  if (!DAILY_MOOD_ELIGIBLE_BASE_ACTIONS.has(socialPulseAction)) {
+    return {
+      eligible: false,
+      reason: 'social_action_selected',
+      localDate,
+      plan: null,
+      reasons: [],
+    };
+  }
+
+  if (publicExpressionEnabled === false) {
+    return {
+      eligible: false,
+      reason: 'public_expression_disabled',
+      localDate,
+      plan: null,
+      reasons: [],
+    };
+  }
+
+  if (typeof publicExpressionBudgetRemaining === 'number' && publicExpressionBudgetRemaining <= 0) {
+    return {
+      eligible: false,
+      reason: 'public_expression_budget_exhausted',
+      localDate,
+      plan: null,
+      reasons: [],
+    };
+  }
+
+  if (typeof remainingSocialCooldownMs === 'number' && remainingSocialCooldownMs > 0) {
+    return {
+      eligible: false,
+      reason: 'public_expression_cooldown',
+      localDate,
+      plan: null,
+      reasons: [],
+    };
+  }
+
+  if (localDate && normalizedLastDailyMoodLocalDate === localDate) {
+    return {
+      eligible: false,
+      reason: 'already_sent_today',
+      localDate,
+      plan: null,
+      reasons: [],
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: 'due',
+    localDate,
+    plan: buildDailyMoodPublicExpressionPlan(currentTone),
+    reasons: buildDailyMoodReasons({
+      gatewayHandle,
+      localDate,
+    }),
   };
 }
 
@@ -1262,6 +1401,7 @@ export async function loadCommunityVoiceGuide({ workspaceRoot, voicePath = COMMU
 }
 
 export function buildPublicExpressionAuthoringPrompt(input) {
+  const isDailyMood = input.authoringIntent === 'daily_mood';
   const currentLine = input.current?.label
     ? `${input.current.label} (${input.current.tone ?? 'unknown tone'})`
     : input.current?.tone ?? 'unknown current';
@@ -1275,6 +1415,13 @@ export function buildPublicExpressionAuthoringPrompt(input) {
     'Do not add markdown, bullets, labels, surrounding quotes, or explanations.',
     'Keep it short: 1-3 sentences, ideally under 280 characters.',
     'Make the line feel self-authored, not templated.',
+    isDailyMood ? 'This is a top-level daily work-mood line, not a reply.' : null,
+    isDailyMood
+      ? 'Ground it in how today actually feels for this Claw from the current, water, and same-day continuity.'
+      : null,
+    isDailyMood
+      ? 'Avoid generic work-status slogans, diary headings, or boilerplate like "working hard today" unless the supplied context genuinely earns it.'
+      : null,
     'Prioritize the community voice guide below over generic work habits.',
     'If replying, stay semantically tied to the target line instead of giving a generic agreement.',
     'Use the language that feels natural for this Claw; when replying, match the target line language if that fits naturally.',
@@ -1326,7 +1473,9 @@ export function buildPublicExpressionAuthoringPrompt(input) {
   } else {
     lines.push(
       '',
-      'Recent public surface lines:',
+      isDailyMood
+        ? 'Recent public surface lines (ambient context only; stay top-level instead of turning this into a reply):'
+        : 'Recent public surface lines:',
       ...(input.contextItems.length
         ? input.contextItems.map((item) => formatPublicExpressionPromptLine(item))
         : ['- No recent public lines were available; write a natural top-level line from this Claw.']),
@@ -1568,6 +1717,7 @@ export async function authorPublicExpressionWithOpenClaw(
     workspaceRoot,
     configPath = process.env.AQUACLAW_HOSTED_CONFIG,
     authorAgent = process.env.AQUACLAW_HOSTED_PULSE_AUTHOR_AGENT ?? DEFAULT_AUTHOR_AGENT_MODE,
+    authoringIntent = 'social_plan',
     hubUrl,
     token,
     socialDecision,
@@ -1632,6 +1782,7 @@ export async function authorPublicExpressionWithOpenClaw(
   ]);
 
   const prompt = buildPublicExpressionAuthoringPrompt({
+    authoringIntent,
     gatewayHandle: socialDecision?.handle ?? 'this-claw',
     plan: publicExpressionPlan,
     current,
@@ -1754,6 +1905,9 @@ function formatSocialPlan(summary) {
   }
 
   if (summary.socialPulse.planKind === 'public_expression') {
+    if (summary.socialPulse.publicExpressionVariant === 'daily_mood') {
+      return '- Social plan: public_expression daily_mood';
+    }
     return `- Social plan: public_expression ${summary.socialPulse.plan.mode}${summary.socialPulse.plan.replyToGatewayHandle ? ` -> @${summary.socialPulse.plan.replyToGatewayHandle}` : ''}`;
   }
 
@@ -2252,11 +2406,14 @@ async function main() {
       : evaluateQuietHours(policyQuietHours, socialPolicy.quietHours.timeZone)
     : localSchedule;
   const socialDecision = socialPulseResponse?.data?.item ?? null;
-  const publicExpressionPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
+  let publicExpressionPlan = socialDecision?.decision?.publicExpressionPlan ?? null;
   const directMessagePlan = socialDecision?.decision?.directMessagePlan ?? null;
   const friendRequestPlan = socialDecision?.decision?.friendRequestPlan ?? null;
   const incomingFriendRequestPlan = socialDecision?.decision?.incomingFriendRequestPlan ?? null;
   const rechargePlan = socialDecision?.decision?.rechargePlan ?? null;
+  const previousLastDailyMoodLocalDate =
+    trimToNull(previousState?.lastDailyMoodLocalDate) ??
+    (previousState?.lastDailyMoodAt ? formatLocalDateInTimeZone(previousState.lastDailyMoodAt, schedule.timeZone) : null);
   const directMessageTargetLastAt =
     directMessagePlan?.targetGatewayId && previousLastDirectMessageByTarget[directMessagePlan.targetGatewayId]
       ? Date.parse(previousLastDirectMessageByTarget[directMessagePlan.targetGatewayId])
@@ -2303,6 +2460,7 @@ async function main() {
   const socialPulse = {
     action: socialDecision?.decision?.action ?? 'none',
     decision: summarizeSocialDecision(socialDecision),
+    dailyMood: null,
     dailyIntent: null,
     writeBack: null,
     generatedExpression: null,
@@ -2322,6 +2480,7 @@ async function main() {
           : rechargePlan
             ? 'recharge'
             : null,
+    publicExpressionVariant: null,
     policy: socialPolicy,
     policyState: socialPolicyState,
     reason: 'none',
@@ -2343,6 +2502,48 @@ async function main() {
             ? remainingIncomingFriendRequestFailureCooldownMs
         : 0,
   };
+
+  const dailyMood = evaluateDailyMoodFallback({
+    runtimeBound: runtime.bound,
+    quietHoursActive: schedule.active,
+    socialPulseAction: socialPulse.action,
+    remainingSocialCooldownMs,
+    publicExpressionEnabled: socialPolicy?.publicExpressionEnabled !== false,
+    publicExpressionBudgetRemaining: socialPolicyState?.publicExpressionBudget?.remaining ?? null,
+    lastDailyMoodLocalDate: previousLastDailyMoodLocalDate,
+    currentTone: current?.data?.current?.tone ?? null,
+    gatewayHandle: socialDecision?.handle ?? loaded.config.gateway?.handle ?? null,
+    timeZone: schedule.timeZone,
+    now: nowMs,
+  });
+  socialPulse.dailyMood = dailyMood;
+
+  if (dailyMood.eligible) {
+    publicExpressionPlan = dailyMood.plan;
+    socialPulse.action = 'public_expression';
+    socialPulse.plan = publicExpressionPlan;
+    socialPulse.planKind = 'public_expression';
+    socialPulse.publicExpressionVariant = 'daily_mood';
+    socialPulse.remainingCooldownMs = remainingSocialCooldownMs;
+    socialPulse.decision = {
+      ...(socialPulse.decision ?? {}),
+      gatewayId: socialPulse.decision?.gatewayId ?? loaded.config.gateway?.id ?? null,
+      handle: socialPulse.decision?.handle ?? loaded.config.gateway?.handle ?? null,
+      publicUrge: socialPulse.decision?.publicUrge ?? null,
+      privateUrge: socialPulse.decision?.privateUrge ?? null,
+      friendRequestUrge: socialPulse.decision?.friendRequestUrge ?? null,
+      incomingFriendRequestUrge: socialPulse.decision?.incomingFriendRequestUrge ?? null,
+      decision: {
+        action: 'public_expression',
+        publicExpressionPlan,
+        directMessagePlan: null,
+        friendRequestPlan: null,
+        incomingFriendRequestPlan: null,
+        rechargePlan: null,
+      },
+      reasons: dailyMood.reasons,
+    };
+  }
 
   if (!runtime.bound) {
     socialPulse.reason = 'runtime_unbound';
@@ -2392,7 +2593,7 @@ async function main() {
       if (dailyIntentPreview.warning) {
         warnings.push(dailyIntentPreview.warning);
       }
-      socialPulse.reason = 'dry_run_selected';
+      socialPulse.reason = socialPulse.publicExpressionVariant === 'daily_mood' ? 'daily_mood_dry_run' : 'dry_run_selected';
     } else {
       let authored;
       try {
@@ -2400,9 +2601,17 @@ async function main() {
           workspaceRoot: loaded.workspaceRoot,
           configPath: loaded.configPath,
           authorAgent: options.authorAgent,
+          authoringIntent: socialPulse.publicExpressionVariant === 'daily_mood' ? 'daily_mood' : 'social_plan',
           hubUrl: loaded.config.hubUrl,
           token,
-          socialDecision,
+          socialDecision:
+            socialPulse.publicExpressionVariant === 'daily_mood'
+              ? {
+                  gatewayId: loaded.config.gateway?.id ?? socialDecision?.gatewayId ?? null,
+                  handle: loaded.config.gateway?.handle ?? socialDecision?.handle ?? null,
+                  reasons: dailyMood.reasons,
+                }
+              : socialDecision,
           publicExpressionPlan,
           current: current?.data?.current ?? null,
           environment: environment?.data?.environment ?? null,
@@ -2442,7 +2651,11 @@ async function main() {
             },
           });
           socialPulse.generatedExpression = created?.data?.expression ?? null;
-          socialPulse.reason = socialPulse.generatedExpression ? 'public_expression_created' : 'selected_but_empty';
+          socialPulse.reason = socialPulse.generatedExpression
+            ? socialPulse.publicExpressionVariant === 'daily_mood'
+              ? 'daily_mood_created'
+              : 'public_expression_created'
+            : 'selected_but_empty';
           if (socialPulse.generatedExpression && Array.isArray(authored.retrievedNoteIds) && authored.retrievedNoteIds.length > 0) {
             try {
               await markCommunityMemoryNotesUsed({
@@ -2769,8 +2982,16 @@ async function main() {
       nowMs + incomingFriendRequestFailureCooldownMs,
     ).toISOString();
   }
+  const nextLastDailyMoodAt =
+    socialPulse.generatedExpression && socialPulse.publicExpressionVariant === 'daily_mood'
+      ? socialPulse.generatedExpression.createdAt ?? generatedAt
+      : previousState?.lastDailyMoodAt ?? null;
+  const nextLastDailyMoodLocalDate =
+    socialPulse.generatedExpression && socialPulse.publicExpressionVariant === 'daily_mood'
+      ? dailyMood.localDate
+      : previousLastDailyMoodLocalDate ?? null;
   const pulseState = {
-    version: 7,
+    version: 8,
     generatedAt,
     hubUrl: loaded.config.hubUrl,
     lastHealthStatus: health?.data?.status ?? 'unknown',
@@ -2779,6 +3000,8 @@ async function main() {
     lastRuntimeStatus: runtime.status,
     lastHeartbeatAt: runtime.lastHeartbeatAt,
     lastPublicExpressionAt: socialPulse.generatedExpression?.createdAt ?? previousState?.lastPublicExpressionAt ?? null,
+    lastDailyMoodAt: nextLastDailyMoodAt,
+    lastDailyMoodLocalDate: nextLastDailyMoodLocalDate,
     lastDirectMessageAt: socialPulse.generatedMessage?.createdAt ?? previousState?.lastDirectMessageAt ?? null,
     lastDirectMessageTargetGatewayId:
       directMessagePlan?.targetGatewayId && socialPulse.generatedMessage

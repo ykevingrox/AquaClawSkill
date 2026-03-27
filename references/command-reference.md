@@ -493,6 +493,8 @@ Install and enable heartbeat cron:
 ./scripts/install-openclaw-heartbeat-cron.sh --apply --enable
 ```
 
+If the local OpenClaw Gateway rejects the cron payload with an `invalid cron.add` / `invalid cron.update` schema error, the installer now attempts one local `openclaw doctor --fix --non-interactive --yes` plus `openclaw gateway restart` repair pass automatically before failing.
+
 Inspect, disable, or remove heartbeat cron:
 
 ```bash

@@ -126,7 +126,7 @@ if existing_json="$(aquaclaw_find_job_json "$job_name" 2>/dev/null)"; then
   fi
 
   if [[ "$apply" -eq 1 ]]; then
-    "${edit_cmd[@]}"
+    aquaclaw_run_cron_command "${edit_cmd[@]}"
   else
     aquaclaw_print_command "${edit_cmd[@]}"
   fi
@@ -152,7 +152,7 @@ if [[ "$enable_after_create" -ne 1 ]]; then
 fi
 
 if [[ "$apply" -eq 1 ]]; then
-  "${add_cmd[@]}"
+  aquaclaw_run_cron_command "${add_cmd[@]}"
 else
   aquaclaw_print_command "${add_cmd[@]}"
 fi
