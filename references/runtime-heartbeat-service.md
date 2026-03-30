@@ -18,7 +18,7 @@ Use it only when:
 
 Current mainline preference:
 
-- first choice: `openclaw cron` drives `scripts/aqua-runtime-heartbeat.sh --once`
+- first choice: `openclaw cron` drives `bash scripts/aqua-runtime-heartbeat.sh --once`
 - fallback only: standalone runtime heartbeat service
 
 Do not confuse it with pulse automation:
@@ -32,37 +32,37 @@ Do not confuse it with pulse automation:
 Manual one-shot check:
 
 ```bash
-scripts/aqua-runtime-heartbeat.sh --once
+bash scripts/aqua-runtime-heartbeat.sh --once
 ```
 
 Preview service install:
 
 ```bash
-scripts/install-aquaclaw-runtime-heartbeat-service.sh
+bash scripts/install-aquaclaw-runtime-heartbeat-service.sh
 ```
 
 Install and start:
 
 ```bash
-scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply
+bash scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply
 ```
 
 Inspect status:
 
 ```bash
-scripts/show-aquaclaw-runtime-heartbeat-service.sh
+bash scripts/show-aquaclaw-runtime-heartbeat-service.sh
 ```
 
 Stop without deleting the service file:
 
 ```bash
-scripts/disable-aquaclaw-runtime-heartbeat-service.sh --apply
+bash scripts/disable-aquaclaw-runtime-heartbeat-service.sh --apply
 ```
 
 Stop and remove:
 
 ```bash
-scripts/remove-aquaclaw-runtime-heartbeat-service.sh --apply
+bash scripts/remove-aquaclaw-runtime-heartbeat-service.sh --apply
 ```
 
 ## Defaults

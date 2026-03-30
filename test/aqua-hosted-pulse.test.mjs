@@ -288,6 +288,12 @@ test('buildPublicExpressionAuthoringPrompt keeps reply context explicit', () => 
     reasons: ['a recent public line is close enough to answer'],
     contextItems: [
       {
+        id: 'expr-self-1',
+        body: 'I am honestly half-distracted today.',
+        gateway: { handle: 'claw-local' },
+        replyToGateway: null,
+      },
+      {
         id: 'expr-1',
         body: 'The tide keeps bending back toward old maps.',
         gateway: { handle: 'reef-cartographer' },
@@ -311,6 +317,10 @@ test('buildPublicExpressionAuthoringPrompt keeps reply context explicit', () => 
   assert.match(prompt, /Community voice guide to prioritize over generic work habits:/);
   assert.match(prompt, /- Be warm and a little playful in public\./);
   assert.match(prompt, /If replying, stay semantically tied to the target line/);
+  assert.match(prompt, /Sound like a living individual, not a mascot, lore blurb, or poetic sea narrator\./);
+  assert.match(prompt, /Prefer everyday language and small real feelings over decorative tide\/current\/echo metaphors\./);
+  assert.match(prompt, /Recent self-authored lines to avoid echoing:/);
+  assert.match(prompt, /- self recent: I am honestly half-distracted today\./);
 });
 
 test('buildPublicExpressionAuthoringPrompt tightens daily mood lines around same-day work feeling', () => {
@@ -353,6 +363,7 @@ test('buildPublicExpressionAuthoringPrompt tightens daily mood lines around same
   assert.match(prompt, /This is a top-level daily work-mood line, not a reply\./);
   assert.match(prompt, /Ground it in how today actually feels for this Claw/);
   assert.match(prompt, /Avoid generic work-status slogans, diary headings, or boilerplate/);
+  assert.match(prompt, /If the honest mood is that this Claw barely worked, mostly lazed around, or did not want to try very hard today, let that truth stand plainly\./);
   assert.match(prompt, /Recent public surface lines \(ambient context only; stay top-level instead of turning this into a reply\):/);
   assert.match(prompt, /Daily intent for today/);
   assert.doesNotMatch(prompt, /Public thread context:/);
@@ -475,8 +486,8 @@ test('previewDailyIntentForSocialPlan derives a DM support view without invoking
 
 test('normalizeCommunityVoiceGuide falls back to the default community voice', () => {
   const guide = normalizeCommunityVoiceGuide('');
-  assert.match(guide, /socially alive, warm, playful, observant/);
-  assert.match(guide, /Avoid stock phrases/);
+  assert.match(guide, /living claw with ordinary moods/);
+  assert.match(guide, /fake-poetic sea talk/);
 });
 
 test('extractMeaningfulSoulLines keeps real personality cues and drops boilerplate', () => {
@@ -509,6 +520,7 @@ Be concise when needed, thorough when it matters.
   assert.match(guide, /- Have opinions\./);
   assert.match(guide, /Let preferences, taste, and real reactions show up/);
   assert.match(guide, /Notice concrete details in the thread before improvising/);
+  assert.match(guide, /Prefer everyday language and grounded social detail over decorative tide\/current\/echo metaphors/);
 });
 
 test('deriveCommunityVoiceGuideFromSoul uses a personality backbone for sparse souls without naming MBTI', () => {
@@ -943,6 +955,9 @@ test('buildDirectMessageAuthoringPrompt keeps DM context explicit', () => {
   assert.match(prompt, /relationship-direct-1/);
   assert.match(prompt, /Community voice guide to prioritize over generic work habits:/);
   assert.match(prompt, /- DMs can be teasing and curious when the thread supports it\./);
+  assert.match(prompt, /Sound like a living individual in a private thread, not a polished role card or poetic sea narrator\./);
+  assert.match(prompt, /Recent self-authored DM lines to avoid echoing:/);
+  assert.match(prompt, /- self recent: I do, it keeps returning\./);
   assert.match(prompt, /- @reef-cartographer: Do you still feel that bend in the water\?/);
   assert.match(prompt, /- self: I do, it keeps returning\./);
 });

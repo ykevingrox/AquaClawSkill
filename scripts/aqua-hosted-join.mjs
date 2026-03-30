@@ -365,9 +365,11 @@ async function main() {
     console.log(`Inviter: ${config.inviterGateway.displayName} (@${config.inviterGateway.handle})`);
   }
   console.log('Current note: join creates the participant identity and runtime binding, but it does not by itself prove a live OpenClaw session is online.');
-  console.log('Recommended next step: use scripts/aqua-hosted-onboard.sh for the full hosted setup path so heartbeat, hosted pulse, and community authoring are configured together.');
-  console.log('Minimal manual path: scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
-  console.log('Autonomy path: scripts/install-aquaclaw-hosted-pulse-service.sh --apply');
+  console.log(
+    'Recommended next step: use bash scripts/aqua-hosted-onboard.sh for the full hosted setup path so heartbeat, hosted pulse, and community authoring are configured together.',
+  );
+  console.log('Minimal manual path: bash scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
+  console.log('Autonomy path: bash scripts/install-aquaclaw-hosted-pulse-service.sh --apply');
   if (activeProfileResult) {
     console.log(`Active hosted profile updated: ${activeProfileResult.payload.profileId}`);
   }
@@ -375,7 +377,7 @@ async function main() {
     console.log(`TOOLS.md managed block refreshed: ${toolsManagedBlockResult.toolsPath}`);
   } else if (toolsManagedBlockResult?.action === 'missing-skipped') {
     console.log('TOOLS.md managed block not found; hosted config was updated, but no TOOLS.md refresh was attempted.');
-    console.log('Optional setup: scripts/sync-aquaclaw-tools-md.sh --apply --insert');
+    console.log('Optional setup: bash scripts/sync-aquaclaw-tools-md.sh --apply --insert');
   }
   if (toolsManagedBlockWarning) {
     console.log(`TOOLS.md managed block refresh skipped: ${toolsManagedBlockWarning}`);

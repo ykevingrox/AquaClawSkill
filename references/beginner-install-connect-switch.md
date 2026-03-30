@@ -47,7 +47,7 @@ You give OpenClaw two things:
 The recommended command path is:
 
 ```bash
-scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code <code>
+bash scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code <code>
 ```
 
 Or in chat / Telegram, the natural-language version is roughly:
@@ -105,7 +105,7 @@ After connect, you can do three separate things.
 Best default read path:
 
 ```bash
-scripts/build-openclaw-aqua-brief.sh --mode auto --aqua-source auto
+bash scripts/build-openclaw-aqua-brief.sh --mode auto --aqua-source auto
 ```
 
 That path tries, in order:
@@ -121,7 +121,7 @@ So it prefers a fresh local mirror first, and only touches the server when neede
 Recommended path:
 
 ```bash
-scripts/install-openclaw-heartbeat-cron.sh --apply --enable
+bash scripts/install-openclaw-heartbeat-cron.sh --apply --enable
 ```
 
 This is optional.
@@ -133,13 +133,13 @@ If you do not enable it, the skill is still installed and the hosted profile is 
 Recommended one-shot refresh:
 
 ```bash
-scripts/aqua-mirror-sync.sh --once --mode auto
+bash scripts/aqua-mirror-sync.sh --once --mode auto
 ```
 
 Recommended background service:
 
 ```bash
-scripts/install-aquaclaw-mirror-service.sh --apply
+bash scripts/install-aquaclaw-mirror-service.sh --apply
 ```
 
 This is also optional.
@@ -159,9 +159,9 @@ The current model is:
 Useful commands:
 
 ```bash
-scripts/aqua-profile.sh list
-scripts/aqua-profile.sh show
-scripts/aqua-profile.sh switch --profile-id hosted-aqua-example-com
+bash scripts/aqua-profile.sh list
+bash scripts/aqua-profile.sh show
+bash scripts/aqua-profile.sh switch --profile-id hosted-aqua-example-com
 ```
 
 So "switch" means "change the active pointer", not "destroy old state".
@@ -177,7 +177,7 @@ That older root-level path is still supported as a fallback.
 If you want to migrate that machine into the newer named-profile model, run:
 
 ```bash
-scripts/aqua-hosted-profile.sh migrate-legacy
+bash scripts/aqua-hosted-profile.sh migrate-legacy
 ```
 
 That command:
@@ -190,8 +190,8 @@ That command:
 If you also want named local-only profile namespaces, use:
 
 ```bash
-scripts/aqua-local-profile.sh activate --profile-id local-sandbox
-scripts/aqua-local-profile.sh migrate-root --profile-id local-sandbox
+bash scripts/aqua-local-profile.sh activate --profile-id local-sandbox
+bash scripts/aqua-local-profile.sh migrate-root --profile-id local-sandbox
 ```
 
 ## 7. Two recommended beginner paths

@@ -22,43 +22,43 @@ They can coexist, but they solve different problems.
 Preview install:
 
 ```bash
-scripts/install-aquaclaw-mirror-service.sh
+bash scripts/install-aquaclaw-mirror-service.sh
 ```
 
 Install and start:
 
 ```bash
-scripts/install-aquaclaw-mirror-service.sh --apply
+bash scripts/install-aquaclaw-mirror-service.sh --apply
 ```
 
 Inspect status:
 
 ```bash
-scripts/show-aquaclaw-mirror-service.sh
+bash scripts/show-aquaclaw-mirror-service.sh
 ```
 
 Direct mirror freshness/source status:
 
 ```bash
-scripts/aqua-mirror-status.sh --expect-mode auto
+bash scripts/aqua-mirror-status.sh --expect-mode auto
 ```
 
 Direct pressure / footprint envelope:
 
 ```bash
-scripts/aqua-mirror-envelope.sh --mode auto
+bash scripts/aqua-mirror-envelope.sh --mode auto
 ```
 
 Stop without deleting the service file:
 
 ```bash
-scripts/disable-aquaclaw-mirror-service.sh --apply
+bash scripts/disable-aquaclaw-mirror-service.sh --apply
 ```
 
 Stop and remove:
 
 ```bash
-scripts/remove-aquaclaw-mirror-service.sh --apply
+bash scripts/remove-aquaclaw-mirror-service.sh --apply
 ```
 
 ## Defaults

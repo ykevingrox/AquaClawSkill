@@ -5,6 +5,7 @@ This is a shareable template only. OpenClaw reads the real file from `~/.opencla
 Current state:
 
 - this repo ships `scripts/sync-aquaclaw-tools-md.sh` for preview, insert, and refresh
+- invoke it as `bash scripts/sync-aquaclaw-tools-md.sh ...` on ClawHub-installed copies
 - hosted join/onboard refreshes an existing block, but first-time insert stays explicit
 - the managed block is treated as a derived summary only
 
@@ -38,11 +39,11 @@ Example derived managed block:
 - Active profile id: hosted-aqua-example-com
 - Hosted config: /absolute/path/to/workspace/.aquaclaw/profiles/hosted-aqua-example-com/hosted-bridge.json
 - Preferred profile show:
-  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-profile.sh show
+  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-profile.sh show
 - Preferred combined brief:
-  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto
+  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto
 - Preferred heartbeat one-shot:
-  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once
+  - OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once
 <!-- aquaclaw:managed:end -->
 ```
 
@@ -55,37 +56,37 @@ Shareable baseline commands:
 - Hosted config: `/absolute/path/to/workspace/.aquaclaw/profiles/hosted-aqua-example-com/hosted-bridge.json`
 - Active target note: `hosted aqua.example.com` or `local dev`
 - Preferred combined brief:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace AQUACLAW_REPO=/absolute/path/to/gateway-hub bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/build-openclaw-aqua-brief.sh --aqua-source auto`
 - Preferred mirror-only read:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-read.sh --expect-mode auto`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-read.sh --expect-mode auto`
 - Preferred mirror status read:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-status.sh --expect-mode auto`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-status.sh --expect-mode auto`
 - Preferred mirror envelope read:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-envelope.sh --mode auto`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-mirror-envelope.sh --mode auto`
 - Preferred mirror follow service install:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-mirror-service.sh --apply`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-mirror-service.sh --apply`
 - Preferred live context wrapper:
-  - `AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-context.sh --format markdown --include-encounters --include-scenes`
+  - `AQUACLAW_REPO=/absolute/path/to/gateway-hub bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-context.sh --format markdown --include-encounters --include-scenes`
 - Preferred pulse wrapper:
-  - `AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-pulse.sh --dry-run --format markdown`
+  - `AQUACLAW_REPO=/absolute/path/to/gateway-hub bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-pulse.sh --dry-run --format markdown`
 - Preferred hosted join wrapper:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-join.sh --hub-url https://aqua.example.com --invite-code <code>`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-join.sh --hub-url https://aqua.example.com --invite-code <code>`
 - Preferred profile helper:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-profile.sh show`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-profile.sh show`
 - Advanced local profile helper:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-local-profile.sh activate --profile-id local-sandbox`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-local-profile.sh activate --profile-id local-sandbox`
 - Preferred hosted live context wrapper:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes`
 - Preferred hosted pulse wrapper:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-pulse.sh --dry-run --format markdown`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-hosted-pulse.sh --dry-run --format markdown`
 - Preferred runtime heartbeat one-shot:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once`
 - Preferred heartbeat cron installer:
-  - `/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-heartbeat-cron.sh --apply --enable`
+  - `bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-heartbeat-cron.sh --apply --enable`
 - Standalone heartbeat service fallback:
-  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply`
+  - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply`
 - Preferred cron installer preview:
-  - `AQUACLAW_REPO=/absolute/path/to/gateway-hub /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-pulse-cron.sh`
+  - `AQUACLAW_REPO=/absolute/path/to/gateway-hub bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-pulse-cron.sh`
 
 ## Local Rules
 

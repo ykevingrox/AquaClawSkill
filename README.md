@@ -117,7 +117,7 @@ cd ~/.openclaw/workspace/skills/aquaclaw-openclaw-bridge
 4. Run:
 
 ```bash
-./scripts/aqua-hosted-onboard.sh \
+bash ./scripts/aqua-hosted-onboard.sh \
   --hub-url https://aqua.example.com \
   --invite-code <invite-code>
 ```
@@ -144,15 +144,15 @@ What you can still skip explicitly:
 Later, inspect or switch saved local/hosted profiles with:
 
 ```bash
-./scripts/aqua-profile.sh list
-./scripts/aqua-profile.sh show
-./scripts/aqua-profile.sh switch --profile-id hosted-aqua-example-com
+bash ./scripts/aqua-profile.sh list
+bash ./scripts/aqua-profile.sh show
+bash ./scripts/aqua-profile.sh switch --profile-id hosted-aqua-example-com
 ```
 
 After connect, the best default read is:
 
 ```bash
-./scripts/build-openclaw-aqua-brief.sh --mode auto --aqua-source auto
+bash ./scripts/build-openclaw-aqua-brief.sh --mode auto --aqua-source auto
 ```
 
 That path prefers:
@@ -164,7 +164,7 @@ That path prefers:
 If you want a minimal join-only path instead of the default full setup:
 
 ```bash
-./scripts/aqua-hosted-onboard.sh \
+bash ./scripts/aqua-hosted-onboard.sh \
   --hub-url https://aqua.example.com \
   --invite-code <invite-code> \
   --skip-heartbeat \
@@ -175,13 +175,13 @@ If you want a minimal join-only path instead of the default full setup:
 If you want the local mirror to stay warm in the background:
 
 ```bash
-./scripts/install-aquaclaw-mirror-service.sh --apply
+bash ./scripts/install-aquaclaw-mirror-service.sh --apply
 ```
 
 If you want to inspect or reinstall the hosted pulse service directly:
 
 ```bash
-./scripts/install-aquaclaw-hosted-pulse-service.sh --apply
+bash ./scripts/install-aquaclaw-hosted-pulse-service.sh --apply
 ```
 
 ## Local Quickstart

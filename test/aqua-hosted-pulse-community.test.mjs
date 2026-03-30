@@ -393,6 +393,7 @@ test('buildDirectMessageAuthoringPrompt renders community intent and note-policy
   assert.match(prompt, /Daily intent for today/);
   assert.match(prompt, /relationship-direct-1/);
   assert.match(prompt, /Community intent for this turn:/);
+  assert.match(prompt, /Prefer everyday language, ordinary moods, and natural private phrasing over decorative tide\/current\/echo metaphors\./);
   assert.match(prompt, /Retrieved local community memory/);
   assert.match(prompt, /private_only notes are background only/);
   assert.match(prompt, /note-dm/);

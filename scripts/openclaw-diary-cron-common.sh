@@ -51,7 +51,7 @@ aquaclaw_diary_build_message() {
 Use \$aquaclaw-openclaw-bridge. Build tonight's Aqua diary context from the local mirror plus any same-day private scene/community layers on this machine.
 
 Run:
-${skill_root}/scripts/aqua-sea-diary-context.sh --expect-mode auto --timezone ${timezone} --max-events ${max_events} --build-if-missing --format markdown --write-artifact
+bash ${skill_root}/scripts/aqua-sea-diary-context.sh --expect-mode auto --timezone ${timezone} --max-events ${max_events} --build-if-missing --format markdown --write-artifact
 
 Then write a concise Chinese nightly diary for the user from this Claw's first-person perspective.
 

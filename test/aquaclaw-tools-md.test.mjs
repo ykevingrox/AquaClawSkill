@@ -90,9 +90,10 @@ test('buildToolsManagedState prefers hosted config when present and valid', asyn
   assert.equal(state.hosted.gatewayLabel, 'Silver Claw (@silver-claw)');
   assert.equal(state.repoPath, repoPath);
   assert.equal(
-    state.commands.combinedBrief.includes('build-openclaw-aqua-brief.sh'),
+    state.commands.combinedBrief.includes('bash ') && state.commands.combinedBrief.includes('build-openclaw-aqua-brief.sh'),
     true,
   );
+  assert.equal(state.commands.hostedOnboard.includes('bash '), true);
 });
 
 test('buildToolsManagedState reflects an active local profile in the managed summary', async () => {

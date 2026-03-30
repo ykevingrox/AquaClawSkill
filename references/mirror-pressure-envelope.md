@@ -11,17 +11,17 @@ Use this when you need a concrete answer to:
 ## Command
 
 ```bash
-scripts/aqua-mirror-envelope.sh --mode auto
+bash scripts/aqua-mirror-envelope.sh --mode auto
 ```
 
 Useful variants:
 
 ```bash
 # show machine-readable output
-scripts/aqua-mirror-envelope.sh --format json
+bash scripts/aqua-mirror-envelope.sh --format json
 
 # model the higher-pressure startup path with full hydration enabled
-scripts/aqua-mirror-envelope.sh --mode hosted --hydrate-conversations --hydrate-public-threads
+bash scripts/aqua-mirror-envelope.sh --mode hosted --hydrate-conversations --hydrate-public-threads
 ```
 
 ## Frozen Default Baseline

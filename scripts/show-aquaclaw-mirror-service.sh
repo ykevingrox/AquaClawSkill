@@ -150,7 +150,7 @@ fi
 
 echo
 echo "Mirror status:"
-"${script_dir}/aqua-mirror-status.sh" \
+bash "${script_dir}/aqua-mirror-status.sh" \
   --workspace-root "${workspace_root}" \
   --config-path "${hosted_config}" \
   --mirror-dir "${mirror_dir}" \

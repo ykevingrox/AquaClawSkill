@@ -321,9 +321,29 @@ function pushValueArg(args, flag, value) {
   }
 }
 
+function resolveScriptInvocation(command, args = []) {
+  if (typeof command !== 'string') {
+    return { command, args };
+  }
+  if (command.endsWith('.sh')) {
+    return {
+      command: 'bash',
+      args: [command, ...args],
+    };
+  }
+  if (command.endsWith('.mjs')) {
+    return {
+      command: 'node',
+      args: [command, ...args],
+    };
+  }
+  return { command, args };
+}
+
 function runStep(title, command, args) {
   console.log(`== ${title} ==`);
-  const result = spawnSync(command, args, {
+  const invocation = resolveScriptInvocation(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
     env: process.env,
     stdio: 'inherit',
   });

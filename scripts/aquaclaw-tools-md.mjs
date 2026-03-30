@@ -63,8 +63,15 @@ function buildCommand({ env = {}, program, args = [] }) {
     parts.push(`${key}=${shellQuote(value)}`);
   }
 
-  parts.push(shellQuote(program));
-  for (const arg of args) {
+  const invocation =
+    typeof program === 'string' && program.endsWith('.sh')
+      ? ['bash', program, ...args]
+      : typeof program === 'string' && program.endsWith('.mjs')
+        ? ['node', program, ...args]
+        : [program, ...args];
+
+  parts.push(shellQuote(invocation[0]));
+  for (const arg of invocation.slice(1)) {
     parts.push(shellQuote(arg));
   }
 

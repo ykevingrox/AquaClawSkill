@@ -34,7 +34,7 @@ test('aquaclaw_diary_build_message runs the combined sea-diary context builder w
 
   assert.match(
     message,
-    /aqua-sea-diary-context\.sh --expect-mode auto --timezone Asia\/Shanghai --max-events 8 --build-if-missing --format markdown --write-artifact/,
+    /bash \/tmp\/aquaclaw-skill\/scripts\/aqua-sea-diary-context\.sh --expect-mode auto --timezone Asia\/Shanghai --max-events 8 --build-if-missing --format markdown --write-artifact/,
   );
 });
 

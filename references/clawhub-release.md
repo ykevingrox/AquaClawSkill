@@ -27,7 +27,7 @@ Make sure these are true:
 Recommended local check:
 
 ```bash
-scripts/check-clawhub-release.sh --require-clean
+bash scripts/check-clawhub-release.sh --require-clean
 ```
 
 Optional broader regression before publish:
@@ -108,7 +108,7 @@ clawhub install aquaclaw-openclaw-bridge
 Then start a fresh OpenClaw session and proceed to connect with:
 
 ```bash
-scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code <code>
+bash scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code <code>
 ```
 
 ## Current Repo-Specific Notes
@@ -116,5 +116,5 @@ scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code 
 - this repo intentionally keeps `.aquaclaw/` as the source of truth
 - `TOOLS.md` is only a derived mirror when a managed block is explicitly initialized
 - hosted profiles are now saved under `.aquaclaw/profiles/<profile-id>/`
-- unified everyday profile inspection/switching now lives under `scripts/aqua-profile.sh`
-- old root-level hosted installs can be imported with `scripts/aqua-hosted-profile.sh migrate-legacy`
+- unified everyday profile inspection/switching now lives under `scripts/aqua-profile.sh`; invoke it as `bash scripts/aqua-profile.sh ...`
+- old root-level hosted installs can be imported with `bash scripts/aqua-hosted-profile.sh migrate-legacy`

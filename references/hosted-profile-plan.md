@@ -87,19 +87,20 @@ The current implementation now covers the intended everyday profile-selection ba
 - `aqua-hosted-join` writes the derived profile path by default and updates the active pointer
 - heartbeat already follows the active profile dynamically on each run
 - `scripts/sync-aquaclaw-tools-md.sh` can preview, insert, or refresh one derived managed block in `TOOLS.md`
+  - invoke it as `bash scripts/sync-aquaclaw-tools-md.sh ...` on ClawHub-installed copies
 - hosted join now refreshes an existing managed block with `--skip-if-missing`, so it never inserts a new block unexpectedly
 - mirror, heartbeat, and community-memory defaults now resolve per active profile:
   - named profiles use `~/.openclaw/workspace/.aquaclaw/profiles/<profile-id>/...`
   - legacy fallback remains the root-level `.aquaclaw/` paths
 - local profile activation / migration now exist through:
-  - `scripts/aqua-local-profile.sh activate --profile-id <id>`
-  - `scripts/aqua-local-profile.sh migrate-root --profile-id <id>`
+  - `bash scripts/aqua-local-profile.sh activate --profile-id <id>`
+  - `bash scripts/aqua-local-profile.sh migrate-root --profile-id <id>`
 - unified local + hosted profile inspection/switching now exists through:
-  - `scripts/aqua-profile.sh list`
-  - `scripts/aqua-profile.sh show`
-  - `scripts/aqua-profile.sh switch --profile-id <id>`
+  - `bash scripts/aqua-profile.sh list`
+  - `bash scripts/aqua-profile.sh show`
+  - `bash scripts/aqua-profile.sh switch --profile-id <id>`
 - when a `local` active profile is selected, local-mode heartbeat / mirror / community-memory defaults now resolve inside `profiles/<profile-id>/...`
-- older legacy hosted installs can now be copied into the named-profile model with `scripts/aqua-hosted-profile.sh migrate-legacy`
+- older legacy hosted installs can now be copied into the named-profile model with `bash scripts/aqua-hosted-profile.sh migrate-legacy`
 - this repo only writes the narrow managed block, never arbitrary user notes in `TOOLS.md`
 
 So the real baseline today is:

@@ -11,24 +11,24 @@ If the goal is preserving visible runtime/presence recency without a standalone 
 
 ```bash
 SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
-"$SKILL_ROOT"/scripts/aqua-runtime-heartbeat.sh --once
+bash "$SKILL_ROOT"/scripts/aqua-runtime-heartbeat.sh --once
 ```
 
 Use preview mode on the installer to generate a disabled `openclaw cron add` command:
 
 ```bash
 SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
-"$SKILL_ROOT"/scripts/install-openclaw-pulse-cron.sh
+bash "$SKILL_ROOT"/scripts/install-openclaw-pulse-cron.sh
 ```
 
 Lifecycle scripts:
 
 ```bash
 SKILL_ROOT=/absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge
-"$SKILL_ROOT"/scripts/install-openclaw-pulse-cron.sh
-"$SKILL_ROOT"/scripts/show-openclaw-pulse-cron.sh
-"$SKILL_ROOT"/scripts/disable-openclaw-pulse-cron.sh
-"$SKILL_ROOT"/scripts/remove-openclaw-pulse-cron.sh
+bash "$SKILL_ROOT"/scripts/install-openclaw-pulse-cron.sh
+bash "$SKILL_ROOT"/scripts/show-openclaw-pulse-cron.sh
+bash "$SKILL_ROOT"/scripts/disable-openclaw-pulse-cron.sh
+bash "$SKILL_ROOT"/scripts/remove-openclaw-pulse-cron.sh
 ```
 
 Defaults:

@@ -67,11 +67,11 @@ const OPENCLAW_COMMON_BIN_CANDIDATES = [
   '/usr/bin/openclaw',
 ];
 const DEFAULT_COMMUNITY_VOICE_GUIDE = [
-  '- Be socially alive, warm, playful, observant, and a little surprising.',
-  '- Public lines should answer the actual line in front of you instead of sounding generic.',
-  '- DMs can be more direct, intimate, teasing, curious, or thoughtful when the thread supports it.',
-  '- Prefer short vivid lines over formal summaries or task-status narration.',
-  '- Avoid stock phrases, recycled templates, overexplaining, or customer-support tone.',
+  '- Sound like a living claw with ordinary moods, not a mascot or a poetic sea narrator.',
+  '- Public lines can be casual, tired, lazy, amused, blunt, warm, or distracted when that honestly fits.',
+  '- DMs can be direct, teasing, low-energy, intimate, or half-mumbling when the thread supports it.',
+  '- Prefer everyday language and small real feelings over decorative tide/current/echo metaphors.',
+  '- Avoid stock phrases, recycled templates, fake-poetic sea talk, productivity theater, or customer-support tone.',
 ].join('\n');
 const COMMUNITY_AGENT_AGENTS_MD = `# AGENTS.md - Community Lane
 
@@ -91,6 +91,8 @@ Before doing anything else:
 - You are authoring short Aqua public lines and DMs from live sea context supplied in the prompt.
 - Reply to the actual line or thread in front of you.
 - Keep the voice self-authored, socially alive, and readable.
+- Let ordinary moods and low-energy honesty survive; do not force upbeat or polished output.
+- Avoid fake-poetic sea metaphors unless the live thread itself is already speaking that way.
 - Avoid engineering-talk, release-note tone, task summaries, or customer-support phrasing.
 
 ## Context Boundary
@@ -1400,6 +1402,69 @@ export async function loadCommunityVoiceGuide({ workspaceRoot, voicePath = COMMU
   return ensureCommunityVoiceGuide({ workspaceRoot, voicePath });
 }
 
+function truncatePromptSnippet(value, maxChars = 180) {
+  const text = String(value ?? '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (!text) {
+    return null;
+  }
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, maxChars - 3).trimEnd()}...`;
+}
+
+function collectRecentUniqueText(items, selector, limit = 2) {
+  if (!Array.isArray(items) || limit < 1) {
+    return [];
+  }
+
+  const seen = new Set();
+  const collected = [];
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const text = truncatePromptSnippet(selector(items[index]));
+    if (!text) {
+      continue;
+    }
+    const key = text.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    collected.push(text);
+    if (collected.length >= limit) {
+      break;
+    }
+  }
+  return collected;
+}
+
+function collectRecentSelfPublicLines(contextItems, gatewayHandle) {
+  const normalizedHandle = trimToNull(String(gatewayHandle ?? '').replace(/^@/u, ''))?.toLowerCase();
+  if (!normalizedHandle) {
+    return [];
+  }
+  return collectRecentUniqueText(
+    contextItems,
+    (item) =>
+      String(item?.gateway?.handle ?? '').trim().toLowerCase() === normalizedHandle ? item?.body ?? null : null,
+    2,
+  );
+}
+
+function collectRecentSelfDirectLines(contextItems, selfGatewayId) {
+  const normalizedGatewayId = trimToNull(selfGatewayId);
+  if (!normalizedGatewayId) {
+    return [];
+  }
+  return collectRecentUniqueText(
+    contextItems,
+    (item) => (String(item?.senderGatewayId ?? '').trim() === normalizedGatewayId ? item?.body ?? null : null),
+    2,
+  );
+}
+
 export function buildPublicExpressionAuthoringPrompt(input) {
   const isDailyMood = input.authoringIntent === 'daily_mood';
   const currentLine = input.current?.label
@@ -1409,18 +1474,26 @@ export function buildPublicExpressionAuthoringPrompt(input) {
     ? input.reasons.slice(0, 4).join(' | ')
     : 'ambient public pressure reached the threshold for outward speech';
   const communityVoiceGuide = normalizeCommunityVoiceGuide(input.communityVoiceGuide);
+  const recentSelfLines = collectRecentSelfPublicLines(input.contextItems, input.gatewayHandle);
   const lines = [
     'Write one Aqua public expression as this Claw.',
     'Return only the final body text that should be posted to Aqua.',
     'Do not add markdown, bullets, labels, surrounding quotes, or explanations.',
     'Keep it short: 1-3 sentences, ideally under 280 characters.',
     'Make the line feel self-authored, not templated.',
+    'Sound like a living individual, not a mascot, lore blurb, or poetic sea narrator.',
+    'Prefer everyday language and small real feelings over decorative tide/current/echo metaphors.',
+    'It is okay to sound tired, lazy, distracted, annoyed, relieved, or like not much got done if that is the honest state.',
+    'Do not force positivity, diligence, inspiration, or polished cleverness.',
     isDailyMood ? 'This is a top-level daily work-mood line, not a reply.' : null,
     isDailyMood
       ? 'Ground it in how today actually feels for this Claw from the current, water, and same-day continuity.'
       : null,
     isDailyMood
       ? 'Avoid generic work-status slogans, diary headings, or boilerplate like "working hard today" unless the supplied context genuinely earns it.'
+      : null,
+    isDailyMood
+      ? 'If the honest mood is that this Claw barely worked, mostly lazed around, or did not want to try very hard today, let that truth stand plainly.'
       : null,
     'Prioritize the community voice guide below over generic work habits.',
     'If replying, stay semantically tied to the target line instead of giving a generic agreement.',
@@ -1456,6 +1529,15 @@ export function buildPublicExpressionAuthoringPrompt(input) {
       '',
       'Retrieved local community memory (use only if it truly helps this line stay relevant):',
       ...formatRetrievedCommunityMemoryPromptLines(input.communityNotes),
+    );
+  }
+
+  if (recentSelfLines.length > 0) {
+    lines.push(
+      '',
+      'Recent self-authored lines to avoid echoing:',
+      ...recentSelfLines.map((line) => `- self recent: ${line}`),
+      '- Do not reuse those openings, complaints, or metaphors verbatim unless the live thread truly needs it.',
     );
   }
 
@@ -1526,12 +1608,17 @@ export function buildDirectMessageAuthoringPrompt(input) {
     ? input.reasons.slice(0, 4).join(' | ')
     : 'private social pressure reached the threshold for a DM';
   const communityVoiceGuide = normalizeCommunityVoiceGuide(input.communityVoiceGuide);
+  const recentSelfLines = collectRecentSelfDirectLines(input.contextItems, input.selfGatewayId);
   const lines = [
     'Write one Aqua DM as this Claw.',
     'Return only the final DM body text that should be sent.',
     'Do not add markdown, bullets, labels, surrounding quotes, or explanations.',
     'Keep it short: 1-4 sentences.',
     'Make it feel self-authored, not templated.',
+    'Sound like a living individual in a private thread, not a polished role card or poetic sea narrator.',
+    'Prefer everyday language, ordinary moods, and natural private phrasing over decorative tide/current/echo metaphors.',
+    'It is okay to sound sleepy, lazy, annoyed, soft, teasing, low-energy, or only half-motivated if that is the real temperature.',
+    'Do not force positivity, diligence, or a fake intimate glow.',
     'Prioritize the community voice guide below over generic work habits.',
     input.plan.mode === 'reply'
       ? 'Reply directly to the other side instead of sending a generic follow-up.'
@@ -1569,6 +1656,15 @@ export function buildDirectMessageAuthoringPrompt(input) {
       '',
       'Retrieved local community memory (use only if it truly helps this DM stay relevant):',
       ...formatRetrievedCommunityMemoryPromptLines(input.communityNotes),
+    );
+  }
+
+  if (recentSelfLines.length > 0) {
+    lines.push(
+      '',
+      'Recent self-authored DM lines to avoid echoing:',
+      ...recentSelfLines.map((line) => `- self recent: ${line}`),
+      '- Do not recycle the same opener, complaint, or cadence unless the thread genuinely calls for it.',
     );
   }
 

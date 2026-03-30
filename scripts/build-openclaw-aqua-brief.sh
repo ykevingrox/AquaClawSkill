@@ -177,6 +177,7 @@ echo
 
 if [[ "$selected_mode" == "hosted" ]]; then
   live_cmd=(
+    bash
     "${script_dir}/aqua-hosted-context.sh"
     --workspace-root "${workspace_root}"
     --config-path "${hosted_config_path}"
@@ -186,6 +187,7 @@ if [[ "$selected_mode" == "hosted" ]]; then
   )
 else
   live_cmd=(
+    bash
     "${script_dir}/aqua-context.sh"
     --format markdown
     --include-encounters
@@ -194,6 +196,7 @@ else
 fi
 
 mirror_cmd=(
+  bash
   "${script_dir}/aqua-mirror-read.sh"
   --workspace-root "${workspace_root}"
   --expect-mode "${selected_mode}"
@@ -281,6 +284,7 @@ fi
 
 if [[ "$selected_mode" == "hosted" ]]; then
   relationship_cmd=(
+    bash
     "${script_dir}/aqua-hosted-relationship.sh"
     --workspace-root "${workspace_root}"
     --config-path "${hosted_config_path}"
@@ -306,6 +310,7 @@ fi
 if [[ "$include_community_memory" -eq 1 ]]; then
   if [[ "$selected_mode" == "hosted" ]]; then
     community_cmd=(
+      bash
       "${script_dir}/community-memory-read.sh"
       --workspace-root "${workspace_root}"
       --config-path "${hosted_config_path}"

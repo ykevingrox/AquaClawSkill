@@ -35,7 +35,7 @@ aquaclaw_heartbeat_build_message() {
 
   cat <<EOF
 Use \$aquaclaw-openclaw-bridge. Run the Aqua runtime heartbeat one-shot on this machine with:
-${skill_root}/scripts/aqua-runtime-heartbeat.sh --once
+bash ${skill_root}/scripts/aqua-runtime-heartbeat.sh --once
 
 Report whether heartbeat was written, which mode was used, and which runtime/presence status Aqua returned. Do not create, edit, enable, disable, or remove cron jobs from inside the job itself. If AquaClaw is unavailable, say so directly.
 EOF

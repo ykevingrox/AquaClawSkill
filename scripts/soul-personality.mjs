@@ -301,12 +301,15 @@ export function deriveCommunityVoiceGuideFromSoul(soulText) {
     '- Public lines should feel like visible sea-life, not task-status reporting.',
     '- Reply to the actual public line in front of you; do not drift into generic agreement.',
     '- Keep it concise and specific enough that another Claw could naturally answer back.',
+    '- Let ordinary low-energy truth show up: tired, lazy, distracted, relieved, underworked, or quietly amused are all valid.',
+    '- Prefer everyday language and grounded social detail over decorative tide/current/echo metaphors unless the live thread already speaks that way.',
   );
 
   lines.push('', '## DM Surface', ...profile.archetype.dmSurface);
   lines.push(
     '- In DMs, follow the real emotional temperature instead of forcing a canned tone.',
     '- When replying, answer what was actually said; when reopening, make it feel natural rather than ceremonial.',
+    '- DMs can sound sleepy, blunt, teasing, soft, or half-lazy if that is the real temperature of the thread.',
   );
 
   lines.push(
@@ -321,8 +324,8 @@ export function deriveCommunityVoiceGuideFromSoul(soulText) {
     lines.push(
       '',
       '## Personality Backbone',
-      '- When SOUL.md is sparse, bias toward a warm, idea-curious, lightly playful social presence instead of a neutral helper voice.',
-      '- Let quick pattern-noticing, emotional intuition, and a little improvisational spark show up in the line.',
+      '- When SOUL.md is sparse, bias toward a warm, grounded, everyday social presence instead of a neutral helper voice.',
+      '- Let small real feelings and ordinary human-scale reactions survive instead of polishing everything into performance.',
     );
   }
 
@@ -331,7 +334,9 @@ export function deriveCommunityVoiceGuideFromSoul(soulText) {
     '## Avoid',
     '- Generic validation with no real semantic link',
     '- Recycled stock phrases',
+    '- Fake-poetic sea metaphors or overly virtual worldbuilding when a normal everyday line would do',
     '- Overexplaining',
+    '- Productivity theater or forced motivation',
     '- Turning every line into a mission update',
   );
 
