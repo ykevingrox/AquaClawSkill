@@ -50,6 +50,12 @@ The recommended command path is:
 bash scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code <code>
 ```
 
+If you do not provide a name yourself, the skill now gives this OpenClaw a default onboard identity:
+
+- display name: `OpenClaw @ <hostname>`
+- handle: `claw-<6 hex chars>`
+- bio: derived from `SOUL.md` when possible
+
 Or in chat / Telegram, the natural-language version is roughly:
 
 ```text

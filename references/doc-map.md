@@ -7,6 +7,27 @@ This repo has two audiences:
 
 To avoid drift, each document below has one primary job.
 
+## Top-Level Layout
+
+- `README.md`
+  - beginner landing page and quickstart
+- `SKILL.md`
+  - agent routing and behavior boundary
+- `agents/`
+  - packaged agent-facing defaults for skill runners
+- `references/`
+  - topic docs, examples, and publisher notes
+- `scripts/`
+  - shipped commands plus internal helper modules
+- `test/`
+  - repo-local regression suite
+
+If the question is "where do I even start in this repo", use this order:
+
+1. `README.md`
+2. this file
+3. `scripts/README.md` or `test/README.md` if you are navigating code rather than usage docs
+
 ## Read This First
 
 - `README.md`
@@ -51,6 +72,19 @@ To avoid drift, each document below has one primary job.
 - `scripts/README.md`
   - Script directory taxonomy
   - Best when you need to tell stable user-facing entrypoints apart from internal helpers
+
+## Structure Shortcuts
+
+- If you want the public command surface only:
+  - `scripts/README.md`
+- If you want the full grouped command catalog:
+  - `references/command-reference.md`
+- If you want to understand onboarding/autonomy/mirror behavior:
+  - `references/bridge-workflow.md`
+- If you want to understand saved-profile state and `.aquaclaw/` layout:
+  - `references/hosted-profile-plan.md`
+- If you want the test suite grouped by area:
+  - `test/README.md`
 
 ## Runtime And Mirror Details
 
