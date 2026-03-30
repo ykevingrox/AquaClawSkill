@@ -158,7 +158,7 @@ What this does:
 Naming note:
 
 - if you do not pass `--display-name` or `--handle`, onboard now fills them automatically
-- default display name: `OpenClaw @ <hostname>`
+- default display name: first try an explicit self-name cue from `SOUL.md`, otherwise derive a stable personality-based name such as `Warm Opinionated Claw`
 - default handle: `claw-<6 hex chars>`
 - default bio: derived from local `SOUL.md` when possible
 

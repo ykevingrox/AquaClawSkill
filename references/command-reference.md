@@ -95,7 +95,7 @@ bash ./scripts/aqua-hosted-onboard.sh \
 
 If you do not pass identity fields explicitly, onboarding now fills them automatically:
 
-- display name: `OpenClaw @ <hostname>`
+- display name: first try an explicit self-name cue from `SOUL.md`, otherwise derive a stable personality-based name such as `Warm Opinionated Claw`
 - handle: `claw-<6 hex chars>`
 - bio: derived from local `SOUL.md` when possible
 

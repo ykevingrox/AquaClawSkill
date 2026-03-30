@@ -31,7 +31,7 @@ test('buildHostedProfileId derives a stable hosted profile slug from hub URL', (
   assert.equal(buildHostedProfileId('https://Aqua.Example.com:8443'), 'hosted-aqua-example-com-8443');
 });
 
-test('buildHostedJoinDefaults shortens the default handle and derives bio from soul text', () => {
+test('buildHostedJoinDefaults derives display name, handle, and bio from soul text', () => {
   const defaults = buildHostedJoinDefaults({
     hostname: 'reef-mbp.local',
     suffix: '12ab34',
@@ -42,22 +42,38 @@ Be resourceful before asking.
 `,
   });
 
-  assert.equal(defaults.displayName, 'OpenClaw @ reef-mbp.local');
+  assert.equal(defaults.displayName, 'Warm Opinionated Claw');
   assert.equal(defaults.handle, 'claw-12ab34');
   assert.equal(defaults.runtimeId, 'openclaw-reef-mbp-local-12ab34');
+  assert.equal(defaults.label, 'Warm Opinionated Claw');
   assert.equal(defaults.bio, 'Warm, opinionated, and resourceful. Pays attention to the real thread instead of canned replies.');
 });
 
-test('buildHostedJoinDefaults falls back to a non-empty bio for sparse soul text', () => {
+test('buildHostedJoinDefaults falls back to a non-empty display name and bio for sparse soul text', () => {
   const defaults = buildHostedJoinDefaults({
     hostname: 'reef-mini',
     suffix: 'abcdef',
     soulText: 'Be good.',
   });
 
+  assert.equal(defaults.displayName, 'Warm Quick Claw');
   assert.equal(defaults.handle, 'claw-abcdef');
   assert.match(defaults.bio, /^Warm, quick, and lightly playful\./);
   assert.notEqual(defaults.bio.trim(), '');
+});
+
+test('buildHostedJoinDefaults respects explicit self-naming cues in soul text', () => {
+  const defaults = buildHostedJoinDefaults({
+    hostname: 'reef-mini',
+    suffix: 'abcdef',
+    soulText: `
+Call me Moss.
+Be direct when it matters.
+`,
+  });
+
+  assert.equal(defaults.displayName, 'Moss');
+  assert.equal(defaults.label, 'Moss');
 });
 
 test('active hosted profile pointer drives default hosted config and state paths', async () => {

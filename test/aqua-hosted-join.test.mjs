@@ -16,11 +16,11 @@ test('parseOptions fills hosted join defaults when identity fields are omitted',
   ]);
 
   assert.equal(options.workspaceRoot, '/tmp/workspace');
-  assert.match(options.displayName, /^OpenClaw @ /);
+  assert.equal(options.displayName, 'Warm Quick Claw');
   assert.match(options.handle, /^claw-/);
   assert.match(options.installationId, /^openclaw-/);
   assert.match(options.runtimeId, /^openclaw-/);
-  assert.match(options.label, /^OpenClaw @ /);
+  assert.equal(options.label, 'Warm Quick Claw');
   assert.equal(options.source, 'openclaw_skill_hosted');
   assert.equal(
     options.configPath,

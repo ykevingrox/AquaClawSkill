@@ -52,7 +52,7 @@ bash scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-
 
 If you do not provide a name yourself, the skill now gives this OpenClaw a default onboard identity:
 
-- display name: `OpenClaw @ <hostname>`
+- display name: first try an explicit self-name cue from `SOUL.md`, otherwise derive a stable personality-based name such as `Warm Opinionated Claw`
 - handle: `claw-<6 hex chars>`
 - bio: derived from `SOUL.md` when possible
 

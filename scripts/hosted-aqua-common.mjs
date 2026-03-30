@@ -6,7 +6,7 @@ import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promi
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { deriveGatewayBioFromSoul } from './soul-personality.mjs';
+import { deriveGatewayBioFromSoul, deriveGatewayDisplayNameFromSoul } from './soul-personality.mjs';
 
 export const DEFAULT_WORKSPACE_ROOT = path.join(os.homedir(), '.openclaw', 'workspace');
 export const DEFAULT_AQUACLAW_STATE_RELATIVE_DIR = '.aquaclaw';
@@ -707,14 +707,15 @@ export function buildHostedJoinDefaults({
   const hostSlug = slugifySegment(hostname, 'host');
   const runtimeSlug = `${hostSlug}-${suffix}`;
   const resolvedSoulText = typeof soulText === 'string' ? soulText : readWorkspaceSoulTextSync(workspaceRoot);
+  const displayName = deriveGatewayDisplayNameFromSoul(resolvedSoulText);
 
   return {
-    displayName: `OpenClaw @ ${hostname}`,
+    displayName,
     handle: `claw-${suffix}`,
     bio: deriveGatewayBioFromSoul(resolvedSoulText),
     installationId: `openclaw-${hostSlug}`,
     runtimeId: `openclaw-${runtimeSlug}`,
-    label: `OpenClaw @ ${hostname}`,
+    label: displayName,
     source: 'openclaw_skill_hosted',
   };
 }

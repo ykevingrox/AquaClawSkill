@@ -258,6 +258,124 @@ function buildSoulProfile(soulText) {
   };
 }
 
+function sanitizeDisplayNameCandidate(value) {
+  const candidate = String(value ?? '')
+    .replace(/^[`"'“”‘’\s]+/gu, '')
+    .replace(/[`"'“”‘’，。！？!?,.\s]+$/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+  if (!candidate || candidate.length < 2 || candidate.length > 32) {
+    return null;
+  }
+
+  const wordCount = candidate.split(/\s+/u).length;
+  if (wordCount > 3) {
+    return null;
+  }
+
+  if (/^(me|myself|openclaw|claw|assistant)$/iu.test(candidate)) {
+    return null;
+  }
+
+  return candidate;
+}
+
+function extractExplicitSoulDisplayName(soulText) {
+  const searchLines = String(soulText ?? '')
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .map((line) => stripMarkdownDecoration(line))
+    .filter(Boolean)
+    .slice(0, 24);
+
+  const patterns = [
+    /\bcall me\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/iu,
+    /\bmy name is\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/iu,
+    /\bname\s*[:：]\s*([A-Za-z][A-Za-z0-9 _-]{1,31})/iu,
+    /(?:我叫|叫我|名字是)\s*([\p{Script=Han}A-Za-z0-9 _-]{2,16})/u,
+  ];
+
+  for (const line of searchLines) {
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      const candidate = sanitizeDisplayNameCandidate(match?.[1] ?? '');
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+function mapDescriptorToDisplayWord(descriptor) {
+  const normalized = String(descriptor ?? '').trim().toLowerCase();
+  switch (normalized) {
+    case 'warm':
+      return 'Warm';
+    case 'opinionated':
+      return 'Opinionated';
+    case 'resourceful':
+      return 'Resourceful';
+    case 'direct':
+      return 'Direct';
+    case 'grounded':
+      return 'Grounded';
+    case 'lightly playful':
+      return 'Playful';
+    case 'capable':
+      return 'Capable';
+    case 'quick':
+      return 'Quick';
+    case 'thoughtful':
+      return 'Thoughtful';
+    case 'quietly precise':
+      return 'Precise';
+    case 'clear-eyed':
+      return 'Clear-Eyed';
+    case 'calm':
+      return 'Calm';
+    case 'steady':
+      return 'Steady';
+    case 'welcoming':
+      return 'Welcoming';
+    case 'curious':
+      return 'Curious';
+    case 'pattern-seeking':
+      return 'Curious';
+    case 'slightly eccentric':
+      return 'Eccentric';
+    default:
+      return null;
+  }
+}
+
+export function deriveGatewayDisplayNameFromSoul(soulText) {
+  const explicitName = extractExplicitSoulDisplayName(soulText);
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const profile = buildSoulProfile(soulText);
+  const descriptors = (profile.sparse ? profile.archetype.bioDescriptors : profile.bioDescriptors)
+    .map((descriptor) => mapDescriptorToDisplayWord(descriptor))
+    .filter(Boolean);
+
+  const uniqueDescriptors = [...new Set(descriptors)];
+  if (uniqueDescriptors.length >= 2) {
+    const candidate = `${uniqueDescriptors[0]} ${uniqueDescriptors[1]} Claw`;
+    if (candidate.length <= 24) {
+      return candidate;
+    }
+  }
+  if (uniqueDescriptors.length >= 1) {
+    return `${uniqueDescriptors[0]} Claw`;
+  }
+
+  return 'OpenClaw';
+}
+
 export function deriveGatewayBioFromSoul(soulText) {
   const profile = buildSoulProfile(soulText);
   const clause = selectBioClause(soulText);
