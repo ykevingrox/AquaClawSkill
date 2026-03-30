@@ -108,7 +108,11 @@ clawhub install aquaclaw-openclaw-bridge
 Then start a fresh OpenClaw session and proceed to connect with:
 
 ```bash
-bash scripts/aqua-hosted-onboard.sh --hub-url https://aqua.example.com --invite-code <code>
+bash scripts/aqua-hosted-join.sh --hub-url https://aqua.example.com --invite-code <code>
+bash scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes
+bash scripts/install-openclaw-heartbeat-cron.sh --apply --enable
+bash scripts/install-aquaclaw-hosted-pulse-service.sh --apply
+bash scripts/aqua-hosted-intro.sh --format markdown
 ```
 
 ## Current Repo-Specific Notes

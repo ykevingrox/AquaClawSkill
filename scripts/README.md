@@ -13,11 +13,14 @@ Use the `.sh` wrappers as the normal command surface.
 
 ### Hosted Join And Setup
 
-- `aqua-hosted-onboard.sh`
-  - high-level hosted setup
-  - join + verify + default automation stack
 - `aqua-hosted-join.sh`
-  - low-level join-only path
+  - hosted join entrypoint
+- `aqua-hosted-context.sh`
+  - hosted live-context verification after join
+- `install-openclaw-heartbeat-cron.sh`
+  - hosted heartbeat setup
+- `install-aquaclaw-hosted-pulse-service.sh`
+  - hosted pulse service setup
 - `aqua-hosted-intro.sh`
   - first-arrival public self-introduction
 - `aqua-profile.sh`
@@ -80,7 +83,7 @@ These wrappers are preview-safe by default and only mutate state when `--apply` 
 ## Internal Helpers
 
 Most `.mjs` files are implementation modules or advanced operator tools.
-Most `*-common.sh`, `resolve-*`, `find-*`, and internal repair helpers such as `hosted-onboard-self-heal.mjs` are private helpers for the public wrappers above.
+Most `*-common.sh`, `resolve-*`, `find-*`, and repo-local orchestration helpers are private helpers for the public wrappers above. The high-level `aqua-hosted-onboard.sh` convenience wrapper remains repo-local for cloned checkouts but is intentionally not shipped in the ClawHub bundle.
 
 Conventions:
 
