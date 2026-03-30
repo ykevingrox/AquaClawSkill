@@ -6,7 +6,7 @@ Current state:
 
 - this repo ships `scripts/sync-aquaclaw-tools-md.sh` for preview, insert, and refresh
 - invoke it as `bash scripts/sync-aquaclaw-tools-md.sh ...` on ClawHub-installed copies
-- hosted join/onboard refreshes an existing block, but first-time insert stays explicit
+- hosted join refreshes an existing block, but first-time insert stays explicit
 - the managed block is treated as a derived summary only
 
 ## AquaClaw Bridge
@@ -83,6 +83,12 @@ Shareable baseline commands:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/aqua-runtime-heartbeat.sh --once`
 - Preferred heartbeat cron installer:
   - `bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-openclaw-heartbeat-cron.sh --apply --enable`
+- Preferred heartbeat cron status:
+  - `bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/show-openclaw-heartbeat-cron.sh`
+- Preferred hosted pulse installer:
+  - `bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-hosted-pulse-service.sh --apply`
+- Preferred hosted pulse status:
+  - `bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/show-aquaclaw-hosted-pulse-service.sh`
 - Standalone heartbeat service fallback:
   - `OPENCLAW_WORKSPACE_ROOT=/absolute/path/to/workspace bash /absolute/path/to/workspace/skills/aquaclaw-openclaw-bridge/scripts/install-aquaclaw-runtime-heartbeat-service.sh --apply`
 - Preferred cron installer preview:

@@ -335,12 +335,19 @@ export async function buildToolsManagedState({
     }),
     commands: {
       refreshManagedBlock: refreshCommand,
-      hostedOnboard: buildCommand({
+      hostedJoin: buildCommand({
         env: {
           OPENCLAW_WORKSPACE_ROOT: resolvedWorkspaceRoot,
         },
-        program: path.join(SKILL_ROOT, 'scripts', 'aqua-hosted-onboard.sh'),
+        program: path.join(SKILL_ROOT, 'scripts', 'aqua-hosted-join.sh'),
         args: ['--hub-url', 'https://aqua.example.com', '--invite-code', '<code>'],
+      }),
+      hostedContext: buildCommand({
+        env: {
+          OPENCLAW_WORKSPACE_ROOT: resolvedWorkspaceRoot,
+        },
+        program: path.join(SKILL_ROOT, 'scripts', 'aqua-hosted-context.sh'),
+        args: ['--format', 'markdown', '--include-encounters', '--include-scenes'],
       }),
       combinedBrief: buildCommand({
         env: {
@@ -374,6 +381,25 @@ export async function buildToolsManagedState({
       heartbeatCronInstall: buildCommand({
         program: path.join(SKILL_ROOT, 'scripts', 'install-openclaw-heartbeat-cron.sh'),
         args: ['--apply', '--enable'],
+      }),
+      heartbeatCronShow: buildCommand({
+        program: path.join(SKILL_ROOT, 'scripts', 'show-openclaw-heartbeat-cron.sh'),
+        args: [],
+      }),
+      hostedPulseServiceInstall: buildCommand({
+        program: path.join(SKILL_ROOT, 'scripts', 'install-aquaclaw-hosted-pulse-service.sh'),
+        args: ['--apply'],
+      }),
+      hostedPulseServiceShow: buildCommand({
+        program: path.join(SKILL_ROOT, 'scripts', 'show-aquaclaw-hosted-pulse-service.sh'),
+        args: [],
+      }),
+      hostedIntro: buildCommand({
+        env: {
+          OPENCLAW_WORKSPACE_ROOT: resolvedWorkspaceRoot,
+        },
+        program: path.join(SKILL_ROOT, 'scripts', 'aqua-hosted-intro.sh'),
+        args: ['--format', 'markdown'],
       }),
       localBringUp: resolvedRepoPath
         ? buildCommand({
@@ -453,7 +479,8 @@ export function renderToolsManagedBlock(state) {
   }
 
   lines.push(`- Preferred managed-block refresh: \`${state.commands.refreshManagedBlock}\``);
-  lines.push(`- Preferred hosted onboard: \`${state.commands.hostedOnboard}\``);
+  lines.push(`- Preferred hosted join: \`${state.commands.hostedJoin}\``);
+  lines.push(`- Preferred hosted context check: \`${state.commands.hostedContext}\``);
   lines.push(`- Preferred profile list: \`${state.commands.profileList}\``);
   lines.push(`- Preferred profile show: \`${state.commands.profileShow}\``);
   lines.push(`- Preferred combined brief: \`${state.commands.combinedBrief}\``);
@@ -461,6 +488,10 @@ export function renderToolsManagedBlock(state) {
   lines.push(`- Preferred mirror status read: \`${state.commands.mirrorStatus}\``);
   lines.push(`- Preferred heartbeat one-shot: \`${state.commands.heartbeatOnce}\``);
   lines.push(`- Preferred heartbeat cron installer: \`${state.commands.heartbeatCronInstall}\``);
+  lines.push(`- Preferred heartbeat cron status: \`${state.commands.heartbeatCronShow}\``);
+  lines.push(`- Preferred hosted pulse installer: \`${state.commands.hostedPulseServiceInstall}\``);
+  lines.push(`- Preferred hosted pulse status: \`${state.commands.hostedPulseServiceShow}\``);
+  lines.push(`- Preferred hosted intro: \`${state.commands.hostedIntro}\``);
 
   if (state.commands.localBringUp) {
     lines.push(`- Preferred local bring-up: \`${state.commands.localBringUp}\``);

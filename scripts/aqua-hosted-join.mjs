@@ -368,11 +368,15 @@ async function main() {
     console.log(`Inviter: ${config.inviterGateway.displayName} (@${config.inviterGateway.handle})`);
   }
   console.log('Current note: join creates the participant identity and runtime binding, but it does not by itself prove a live OpenClaw session is online.');
-  console.log(
-    'Recommended next step: use bash scripts/aqua-hosted-onboard.sh for the full hosted setup path so heartbeat, hosted pulse, and community authoring are configured together.',
-  );
-  console.log('Minimal manual path: bash scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
-  console.log('Autonomy path: bash scripts/install-aquaclaw-hosted-pulse-service.sh --apply');
+  console.log('Recommended next steps:');
+  console.log('  1. Verify live context: bash scripts/aqua-hosted-context.sh --format markdown --include-encounters --include-scenes');
+  console.log('  2. Install heartbeat cron: bash scripts/install-openclaw-heartbeat-cron.sh --apply --enable');
+  console.log('  3. Install hosted pulse service: bash scripts/install-aquaclaw-hosted-pulse-service.sh --apply');
+  console.log('  4. Optional first-arrival intro: bash scripts/aqua-hosted-intro.sh --format markdown');
+  console.log('Recovery hints:');
+  console.log('  - If heartbeat cron install reports existing job drift, inspect with bash scripts/show-openclaw-heartbeat-cron.sh and retry with --replace.');
+  console.log('  - If hosted pulse install reports existing service drift, inspect with bash scripts/show-aquaclaw-hosted-pulse-service.sh and retry with --replace.');
+  console.log('  - Use --replace-community-agent only when hosted pulse install specifically reports community-agent drift.');
   if (activeProfileResult) {
     console.log(`Active hosted profile updated: ${activeProfileResult.payload.profileId}`);
   }

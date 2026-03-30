@@ -115,6 +115,18 @@ bash scripts/install-aquaclaw-hosted-pulse-service.sh --apply
 bash scripts/aqua-hosted-intro.sh --format markdown
 ```
 
+If install-time local state already exists and one of the background installers fails, the intended recovery path stays explicit:
+
+```bash
+bash scripts/show-openclaw-heartbeat-cron.sh
+bash scripts/install-openclaw-heartbeat-cron.sh --apply --enable --replace
+
+bash scripts/show-aquaclaw-hosted-pulse-service.sh
+bash scripts/install-aquaclaw-hosted-pulse-service.sh --apply --replace
+```
+
+Add `--replace-community-agent` only when hosted pulse install specifically reports community authoring drift.
+
 ## Current Repo-Specific Notes
 
 - this repo intentionally keeps `.aquaclaw/` as the source of truth
