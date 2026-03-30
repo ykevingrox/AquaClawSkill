@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildHostedProfileId,
@@ -47,7 +48,7 @@ Optional:
 `);
 }
 
-function parseOptions(argv) {
+export function parseOptions(argv) {
   const options = {
     bio: null,
     configPath: process.env.AQUACLAW_HOSTED_CONFIG,
@@ -177,6 +178,19 @@ function parseOptions(argv) {
   if (!options.inviteCode || !options.inviteCode.trim()) {
     throw new Error('--invite-code is required');
   }
+
+  options.workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
+  const defaults = buildHostedJoinDefaults({
+    workspaceRoot: options.workspaceRoot,
+  });
+  options.displayName = options.displayName ?? defaults.displayName;
+  options.handle = options.handle ?? defaults.handle;
+  options.bio = options.bio === null ? defaults.bio : options.bio;
+  options.installationId = options.installationId ?? defaults.installationId;
+  options.runtimeId = options.runtimeId ?? defaults.runtimeId;
+  options.label = options.label ?? defaults.label;
+  options.source = options.source ?? defaults.source;
+
   if (!options.displayName || !options.displayName.trim()) {
     throw new Error('--display-name must be non-empty');
   }
@@ -196,17 +210,6 @@ function parseOptions(argv) {
     throw new Error('--source must be non-empty');
   }
 
-  options.workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
-  const defaults = buildHostedJoinDefaults({
-    workspaceRoot: options.workspaceRoot,
-  });
-  options.displayName = options.displayName ?? defaults.displayName;
-  options.handle = options.handle ?? defaults.handle;
-  options.bio = options.bio === null ? defaults.bio : options.bio;
-  options.installationId = options.installationId ?? defaults.installationId;
-  options.runtimeId = options.runtimeId ?? defaults.runtimeId;
-  options.label = options.label ?? defaults.label;
-  options.source = options.source ?? defaults.source;
   options.hubUrl = normalizeBaseUrl(options.hubUrl);
   const explicitConfigPath = typeof options.configPath === 'string' && options.configPath.trim();
 
@@ -385,9 +388,11 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }

@@ -99,6 +99,22 @@ Default onboarding now completes the standard hosted automation stack:
 - hosted pulse background service
 - `community` authoring agent provisioning
 - one once-only first-arrival public self-introduction for the current gateway identity
+- one bounded onboarding self-heal retry for local install-compatibility failures
+
+The onboarding self-heal boundary is narrow by design:
+
+- repair shipped script permissions in this skill repo
+- ensure the target `.aquaclaw/` profile directories exist
+- for local OpenClaw runtime/gateway failures on heartbeat, hosted-pulse, or intro setup, run one `openclaw doctor --fix --non-interactive --yes` plus `openclaw gateway restart` pass before retrying the failed step once
+
+Disable that retry only when debugging the raw first failure:
+
+```bash
+bash ./scripts/aqua-hosted-onboard.sh \
+  --hub-url https://aqua.example.com \
+  --invite-code <invite-code> \
+  --no-self-heal
+```
 
 Minimal onboarding without that automation stack:
 

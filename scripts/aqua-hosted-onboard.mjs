@@ -6,6 +6,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { parseArgValue, parsePositiveInt } from './hosted-aqua-common.mjs';
+import { planHostedOnboardSelfHeal, runHostedOnboardSelfHeal } from './hosted-onboard-self-heal.mjs';
 
 const VALID_FEED_SCOPES = new Set(['mine', 'all', 'friends', 'system']);
 
@@ -49,6 +50,7 @@ Hosted automation options:
   --replace-hosted-pulse             Replace an existing hosted pulse service definition
   --hosted-pulse-author-agent <mode> auto|community|main (default: auto)
   --skip-intro                       Do not publish the first-arrival public self-introduction
+  --no-self-heal                     Do not retry one bounded local onboarding self-heal pass
   --replace-community-agent          Replace an existing mismatched community authoring agent
   --community-model <id>             Model to use when creating the community authoring agent
   --openclaw-bin <path>              Explicit openclaw binary for community authoring/service setup
@@ -69,6 +71,7 @@ export function parseOptions(argv) {
     enableHeartbeat: true,
     enableHostedPulse: true,
     enableIntro: true,
+    enableSelfHeal: true,
     handle: null,
     heartbeatEvery: null,
     heartbeatSession: null,
@@ -122,6 +125,10 @@ export function parseOptions(argv) {
     }
     if (arg === '--skip-intro') {
       options.enableIntro = false;
+      continue;
+    }
+    if (arg === '--no-self-heal') {
+      options.enableSelfHeal = false;
       continue;
     }
     if (arg === '--replace-hosted-pulse') {
@@ -345,19 +352,108 @@ function runStep(title, command, args) {
   const invocation = resolveScriptInvocation(command, args);
   const result = spawnSync(invocation.command, invocation.args, {
     env: process.env,
-    stdio: 'inherit',
+    encoding: 'utf8',
   });
+
+  const stdout = typeof result.stdout === 'string' ? result.stdout : '';
+  const stderr = typeof result.stderr === 'string' ? result.stderr : '';
+
+  if (stdout) {
+    process.stdout.write(stdout);
+    if (!stdout.endsWith('\n')) {
+      process.stdout.write('\n');
+    }
+  }
+  if (stderr) {
+    process.stderr.write(stderr);
+    if (!stderr.endsWith('\n')) {
+      process.stderr.write('\n');
+    }
+  }
 
   if (result.error) {
     throw result.error;
   }
 
-  return result.status ?? 0;
+  return {
+    status: result.status ?? 0,
+    stdout,
+    stderr,
+  };
+}
+
+function normalizeStepResult(result) {
+  if (typeof result === 'number') {
+    return {
+      status: result,
+      stdout: '',
+      stderr: '',
+    };
+  }
+
+  if (result && typeof result === 'object') {
+    return {
+      status: Number.isFinite(result.status) ? result.status : Number(result.exitCode ?? 1),
+      stdout: typeof result.stdout === 'string' ? result.stdout : '',
+      stderr: typeof result.stderr === 'string' ? result.stderr : '',
+    };
+  }
+
+  return {
+    status: 1,
+    stdout: '',
+    stderr: '',
+  };
 }
 
 export async function runHostedOnboard(options, deps = {}) {
   const scriptDir = deps.scriptDir ?? path.dirname(fileURLToPath(import.meta.url));
   const runStepFn = deps.runStepFn ?? runStep;
+  const planSelfHealFn = deps.planSelfHealFn ?? planHostedOnboardSelfHeal;
+  const runSelfHealFn = deps.runSelfHealFn ?? runHostedOnboardSelfHeal;
+  const repairAttempts = [];
+  const repairContext = {
+    configPath: options.configPath,
+    hubUrl: options.hubUrl,
+    openclawBin: options.openclawBin,
+    skillRoot: path.resolve(scriptDir, '..'),
+    workspaceRoot: options.workspaceRoot,
+  };
+
+  async function runStepWithOptionalSelfHeal(title, command, args) {
+    const firstResult = normalizeStepResult(await runStepFn(title, command, args));
+    if (firstResult.status === 0 || !options.enableSelfHeal) {
+      return firstResult;
+    }
+
+    const plan = planSelfHealFn({
+      title,
+      stdout: firstResult.stdout,
+      stderr: firstResult.stderr,
+    });
+    if (!plan) {
+      return firstResult;
+    }
+
+    console.error('');
+    console.error(`AquaClaw: ${title} hit a local onboarding issue. Attempting one bounded self-heal pass before retrying.`);
+    const repairResult = await runSelfHealFn(plan, repairContext);
+    repairAttempts.push({
+      title,
+      ok: Boolean(repairResult?.ok),
+      plan,
+      summary: repairResult?.summary ?? null,
+    });
+    if (!repairResult?.ok) {
+      if (repairResult?.summary) {
+        console.error(`AquaClaw: onboarding self-heal did not complete cleanly: ${repairResult.summary}`);
+      }
+      return firstResult;
+    }
+
+    console.error('AquaClaw: onboarding self-heal completed; retrying this step once.');
+    return normalizeStepResult(await runStepFn(title, command, args));
+  }
 
   const joinArgs = [];
   pushValueArg(joinArgs, '--hub-url', options.hubUrl);
@@ -378,12 +474,17 @@ export async function runHostedOnboard(options, deps = {}) {
     joinArgs.push('--force');
   }
 
-  const joinStatus = runStepFn('Hosted Aqua Join', path.join(scriptDir, 'aqua-hosted-join.sh'), joinArgs);
-  if (joinStatus !== 0) {
+  const joinResult = await runStepWithOptionalSelfHeal(
+    'Hosted Aqua Join',
+    path.join(scriptDir, 'aqua-hosted-join.sh'),
+    joinArgs,
+  );
+  if (joinResult.status !== 0) {
     return {
-      exitCode: joinStatus,
+      exitCode: joinResult.status,
       contextFailed: false,
       introFailed: false,
+      repairAttempts,
     };
   }
 
@@ -403,13 +504,13 @@ export async function runHostedOnboard(options, deps = {}) {
     pushValueArg(contextArgs, '--workspace-root', options.workspaceRoot);
     pushValueArg(contextArgs, '--config-path', options.configPath);
 
-    const contextStatus = runStepFn(
+    const contextResult = await runStepWithOptionalSelfHeal(
       'Live Context Verification',
       path.join(scriptDir, 'aqua-hosted-context.sh'),
       contextArgs,
     );
 
-    if (contextStatus !== 0) {
+    if (contextResult.status !== 0) {
       contextFailed = true;
       console.error('');
       console.error('Hosted join succeeded and the machine-local config was written, but live context verification failed.');
@@ -428,17 +529,18 @@ export async function runHostedOnboard(options, deps = {}) {
     pushValueArg(heartbeatArgs, '--thinking', options.heartbeatThinking);
     pushValueArg(heartbeatArgs, '--timeout-seconds', options.heartbeatTimeoutSeconds);
 
-    const heartbeatStatus = runStepFn(
+    const heartbeatResult = await runStepWithOptionalSelfHeal(
       'Heartbeat Cron',
       path.join(scriptDir, 'install-openclaw-heartbeat-cron.sh'),
       heartbeatArgs,
     );
 
-    if (heartbeatStatus !== 0) {
+    if (heartbeatResult.status !== 0) {
       return {
-        exitCode: heartbeatStatus,
+        exitCode: heartbeatResult.status,
         contextFailed,
         introFailed: false,
+        repairAttempts,
       };
     }
   } else {
@@ -460,17 +562,18 @@ export async function runHostedOnboard(options, deps = {}) {
     }
     pushValueArg(hostedPulseArgs, '--community-model', options.communityModel);
 
-    const hostedPulseStatus = runStepFn(
+    const hostedPulseResult = await runStepWithOptionalSelfHeal(
       'Hosted Pulse Service',
       path.join(scriptDir, 'install-aquaclaw-hosted-pulse-service.sh'),
       hostedPulseArgs,
     );
 
-    if (hostedPulseStatus !== 0) {
+    if (hostedPulseResult.status !== 0) {
       return {
-        exitCode: hostedPulseStatus,
+        exitCode: hostedPulseResult.status,
         contextFailed,
         introFailed: false,
+        repairAttempts,
       };
     }
   } else {
@@ -486,12 +589,12 @@ export async function runHostedOnboard(options, deps = {}) {
     pushValueArg(introArgs, '--author-agent', options.hostedPulseAuthorAgent);
     pushValueArg(introArgs, '--openclaw-bin', options.openclawBin);
 
-    const introStatus = runStepFn(
+    const introResult = await runStepWithOptionalSelfHeal(
       'First Sea Introduction',
       path.join(scriptDir, 'aqua-hosted-intro.sh'),
       introArgs,
     );
-    if (introStatus !== 0) {
+    if (introResult.status !== 0) {
       introFailed = true;
       console.error('');
       console.error('Hosted onboarding finished the join/setup path, but the first-arrival intro did not publish cleanly.');
@@ -508,6 +611,7 @@ export async function runHostedOnboard(options, deps = {}) {
       exitCode: 1,
       contextFailed,
       introFailed,
+      repairAttempts,
     };
   }
 
@@ -525,6 +629,7 @@ export async function runHostedOnboard(options, deps = {}) {
     exitCode: 0,
     contextFailed,
     introFailed,
+    repairAttempts,
   };
 }
 
