@@ -340,13 +340,16 @@ export function normalizeMirrorState(input) {
   };
 }
 
-export function conversationFilePath(paths, conversationId) {
+export function conversationThreadPath(paths, conversationId) {
   return path.join(paths.conversationsDir, `${conversationId}.json`);
 }
 
-export function publicThreadFilePath(paths, rootExpressionId) {
+export function publicThreadPath(paths, rootExpressionId) {
   return path.join(paths.publicThreadsDir, `${rootExpressionId}.json`);
 }
+
+export const conversationFilePath = conversationThreadPath;
+export const publicThreadFilePath = publicThreadPath;
 
 export function relativeMirrorPath(paths, filePath) {
   return path.relative(paths.mirrorRoot, filePath);

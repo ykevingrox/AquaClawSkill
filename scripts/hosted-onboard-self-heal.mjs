@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
+import { execFile as execFileCallback } from 'node:child_process';
 import { chmod, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { promisify } from 'node:util';
 
+import { getProcessEnvSnapshot, readEnvOptionalString } from './env-readers.mjs';
 import {
   buildHostedProfileId,
   normalizeBaseUrl,
@@ -23,6 +25,7 @@ const OPENCLAW_RUNTIME_STEP_TITLES = new Set([
   'Hosted Pulse Service',
   'First Sea Introduction',
 ]);
+const execFile = promisify(execFileCallback);
 
 export function planHostedOnboardSelfHeal({
   title,
@@ -75,11 +78,11 @@ export function planHostedOnboardSelfHeal({
 }
 
 function resolveRepairPaths({
-  workspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT,
+  workspaceRoot = null,
   configPath = null,
   hubUrl = null,
 } = {}) {
-  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot);
+  const resolvedWorkspaceRoot = resolveWorkspaceRoot(workspaceRoot ?? readEnvOptionalString('OPENCLAW_WORKSPACE_ROOT'));
   let resolvedConfigPath = null;
   let profileId = null;
 
@@ -192,24 +195,44 @@ function printCapturedOutput(stdout, stderr) {
 }
 
 async function repairOpenClawRuntime({
-  openclawBin = process.env.OPENCLAW_BIN ?? null,
+  openclawBin = null,
 } = {}) {
-  const command = typeof openclawBin === 'string' && openclawBin.trim() ? openclawBin.trim() : 'openclaw';
+  const command =
+    typeof openclawBin === 'string' && openclawBin.trim()
+      ? openclawBin.trim()
+      : readEnvOptionalString('OPENCLAW_BIN') ?? 'openclaw';
   console.error('AquaClaw: attempting one local OpenClaw repair pass (doctor --fix + gateway restart).');
 
-  const doctor = spawnSync(command, ['doctor', '--fix', '--non-interactive', '--yes'], {
-    env: process.env,
-    encoding: 'utf8',
-  });
-  const doctorStdout = typeof doctor.stdout === 'string' ? doctor.stdout : '';
-  const doctorStderr = typeof doctor.stderr === 'string' ? doctor.stderr : '';
+  let doctor = { status: 0, stdout: '', stderr: '', error: null };
+  try {
+    const result = await execFile(command, ['doctor', '--fix', '--non-interactive', '--yes'], {
+      env: getProcessEnvSnapshot(),
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    doctor = {
+      status: 0,
+      stdout: typeof result.stdout === 'string' ? result.stdout : '',
+      stderr: typeof result.stderr === 'string' ? result.stderr : '',
+      error: null,
+    };
+  } catch (error) {
+    doctor = {
+      status: typeof error?.code === 'number' ? error.code : 1,
+      stdout: typeof error?.stdout === 'string' ? error.stdout : '',
+      stderr: typeof error?.stderr === 'string' ? error.stderr : '',
+      error: typeof error?.code === 'number' ? null : error?.message ?? String(error),
+    };
+  }
+  const doctorStdout = doctor.stdout;
+  const doctorStderr = doctor.stderr;
   printCapturedOutput(doctorStdout, doctorStderr);
   if (doctor.error) {
     return {
       ok: false,
       action: 'repair_openclaw_runtime',
       failedAt: 'doctor',
-      error: doctor.error.message,
+      error: doctor.error,
     };
   }
   if ((doctor.status ?? 0) !== 0) {
@@ -221,19 +244,36 @@ async function repairOpenClawRuntime({
     };
   }
 
-  const restart = spawnSync(command, ['gateway', 'restart'], {
-    env: process.env,
-    encoding: 'utf8',
-  });
-  const restartStdout = typeof restart.stdout === 'string' ? restart.stdout : '';
-  const restartStderr = typeof restart.stderr === 'string' ? restart.stderr : '';
+  let restart = { status: 0, stdout: '', stderr: '', error: null };
+  try {
+    const result = await execFile(command, ['gateway', 'restart'], {
+      env: getProcessEnvSnapshot(),
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    restart = {
+      status: 0,
+      stdout: typeof result.stdout === 'string' ? result.stdout : '',
+      stderr: typeof result.stderr === 'string' ? result.stderr : '',
+      error: null,
+    };
+  } catch (error) {
+    restart = {
+      status: typeof error?.code === 'number' ? error.code : 1,
+      stdout: typeof error?.stdout === 'string' ? error.stdout : '',
+      stderr: typeof error?.stderr === 'string' ? error.stderr : '',
+      error: typeof error?.code === 'number' ? null : error?.message ?? String(error),
+    };
+  }
+  const restartStdout = restart.stdout;
+  const restartStderr = restart.stderr;
   printCapturedOutput(restartStdout, restartStderr);
   if (restart.error) {
     return {
       ok: false,
       action: 'repair_openclaw_runtime',
       failedAt: 'restart',
-      error: restart.error.message,
+      error: restart.error,
     };
   }
   if ((restart.status ?? 0) !== 0) {

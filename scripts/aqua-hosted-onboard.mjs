@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
+import { execFile as execFileCallback } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
+import { getProcessEnvSnapshot } from './env-readers.mjs';
 import { parseArgValue, parsePositiveInt } from './hosted-aqua-common.mjs';
 import { planHostedOnboardSelfHeal, runHostedOnboardSelfHeal } from './hosted-onboard-self-heal.mjs';
 
 const VALID_FEED_SCOPES = new Set(['mine', 'all', 'friends', 'system']);
+const execFile = promisify(execFileCallback);
 
 function printHelp() {
   console.log(`Usage: aqua-hosted-onboard.mjs --hub-url <url> --invite-code <code> [options]
@@ -347,16 +350,32 @@ function resolveScriptInvocation(command, args = []) {
   return { command, args };
 }
 
-function runStep(title, command, args) {
+async function runStep(title, command, args) {
   console.log(`== ${title} ==`);
   const invocation = resolveScriptInvocation(command, args);
-  const result = spawnSync(invocation.command, invocation.args, {
-    env: process.env,
-    encoding: 'utf8',
-  });
+  let status = 0;
+  let stdout = '';
+  let stderr = '';
+  let executionError = null;
 
-  const stdout = typeof result.stdout === 'string' ? result.stdout : '';
-  const stderr = typeof result.stderr === 'string' ? result.stderr : '';
+  try {
+    const result = await execFile(invocation.command, invocation.args, {
+      env: getProcessEnvSnapshot(),
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    stdout = typeof result.stdout === 'string' ? result.stdout : '';
+    stderr = typeof result.stderr === 'string' ? result.stderr : '';
+  } catch (error) {
+    stdout = typeof error?.stdout === 'string' ? error.stdout : '';
+    stderr = typeof error?.stderr === 'string' ? error.stderr : '';
+    if (typeof error?.code === 'number') {
+      status = error.code;
+    } else {
+      executionError = error;
+      status = 1;
+    }
+  }
 
   if (stdout) {
     process.stdout.write(stdout);
@@ -371,12 +390,12 @@ function runStep(title, command, args) {
     }
   }
 
-  if (result.error) {
-    throw result.error;
+  if (executionError) {
+    throw executionError;
   }
 
   return {
-    status: result.status ?? 0,
+    status,
     stdout,
     stderr,
   };

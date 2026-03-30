@@ -169,7 +169,7 @@ function validateTimeZone(value) {
 }
 
 function parseClockMinutes(value, label) {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(value).trim());
+  const match = String(value).trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
   if (!match) {
     throw new Error(`${label} must use HH:MM in 24-hour time`);
   }
@@ -1580,7 +1580,7 @@ export function extractOpenClawAgentTextPayload(output) {
 
 export function normalizeGeneratedPublicExpressionBody(text) {
   let body = String(text ?? '').trim();
-  const fencedMatch = /^```(?:[\w-]+)?\s*([\s\S]*?)\s*```$/u.exec(body);
+  const fencedMatch = body.match(/^```(?:[\w-]+)?\s*([\s\S]*?)\s*```$/u);
   if (fencedMatch) {
     body = fencedMatch[1].trim();
   }

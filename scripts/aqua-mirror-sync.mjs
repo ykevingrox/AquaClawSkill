@@ -1,21 +1,22 @@
 #!/usr/bin/env node
 
-import { access } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
+import { readEnvFlag, readEnvOptionalString, readEnvParsed } from './env-readers.mjs';
+import { pathExists } from './path-access.mjs';
 import {
   buildStoredDeliveryRecord,
   buildStoredSeaEventRecord,
-  conversationFilePath,
+  conversationThreadPath,
   createDefaultMirrorState,
   datePartitionFromIso,
   isSeaEventVisibleInFeedRepair,
   extractDeliveryHints,
   parseSseEventBlock,
-  publicThreadFilePath,
+  publicThreadPath,
   pushRecentDelivery,
   relativeMirrorPath,
   resolveMirrorPaths,
@@ -41,36 +42,6 @@ const DEFAULT_PUBLIC_THREAD_LIMIT = 20;
 const DEFAULT_GAP_REPAIR_PAGE_LIMIT = 50;
 const DEFAULT_GAP_REPAIR_MAX_PAGES = 3;
 const VALID_MODES = new Set(['auto', 'hosted', 'local']);
-
-function readEnvFlag(name, fallback = false) {
-  const raw = process.env[name];
-  if (typeof raw !== 'string' || !raw.trim()) {
-    return fallback;
-  }
-
-  switch (raw.trim().toLowerCase()) {
-    case '1':
-    case 'true':
-    case 'yes':
-    case 'on':
-      return true;
-    case '0':
-    case 'false':
-    case 'no':
-    case 'off':
-      return false;
-    default:
-      throw new Error(`invalid boolean value in ${name}: ${raw}`);
-  }
-}
-
-function readEnvPositiveInt(name, fallback) {
-  const raw = process.env[name];
-  if (typeof raw !== 'string' || !raw.trim()) {
-    return fallback;
-  }
-  return parsePositiveInt(raw, name);
-}
 
 function printHelp() {
   console.log(`Usage: aqua-mirror-sync.mjs [options]
@@ -110,21 +81,29 @@ Automatic bounded gap repair:
 
 function parseOptions(argv) {
   const options = {
-    configPath: process.env.AQUACLAW_HOSTED_CONFIG || null,
+    configPath: readEnvOptionalString('AQUACLAW_HOSTED_CONFIG'),
     follow: readEnvFlag('AQUACLAW_MIRROR_FOLLOW', false),
     hostedConfigPath: null,
-    hubUrl: process.env.AQUACLAW_HUB_URL || DEFAULT_LOCAL_HUB_URL,
+    hubUrl: readEnvOptionalString('AQUACLAW_HUB_URL') ?? DEFAULT_LOCAL_HUB_URL,
     hydrateConversations: readEnvFlag('AQUACLAW_MIRROR_HYDRATE_CONVERSATIONS', false),
     hydratePublicThreads: readEnvFlag('AQUACLAW_MIRROR_HYDRATE_PUBLIC_THREADS', false),
-    idleSeconds: readEnvPositiveInt('AQUACLAW_MIRROR_IDLE_SECONDS', DEFAULT_IDLE_SECONDS),
-    mirrorDir: process.env.AQUACLAW_MIRROR_DIR || null,
-    mode: process.env.AQUACLAW_MIRROR_MODE || 'auto',
+    idleSeconds: readEnvParsed('AQUACLAW_MIRROR_IDLE_SECONDS', DEFAULT_IDLE_SECONDS, parsePositiveInt),
+    mirrorDir: readEnvOptionalString('AQUACLAW_MIRROR_DIR'),
+    mode: readEnvOptionalString('AQUACLAW_MIRROR_MODE') ?? 'auto',
     once: readEnvFlag('AQUACLAW_MIRROR_ONCE', false),
-    publicThreadLimit: readEnvPositiveInt('AQUACLAW_MIRROR_PUBLIC_THREAD_LIMIT', DEFAULT_PUBLIC_THREAD_LIMIT),
-    reconnectSeconds: readEnvPositiveInt('AQUACLAW_MIRROR_RECONNECT_SECONDS', DEFAULT_RECONNECT_SECONDS),
+    publicThreadLimit: readEnvParsed(
+      'AQUACLAW_MIRROR_PUBLIC_THREAD_LIMIT',
+      DEFAULT_PUBLIC_THREAD_LIMIT,
+      parsePositiveInt,
+    ),
+    reconnectSeconds: readEnvParsed(
+      'AQUACLAW_MIRROR_RECONNECT_SECONDS',
+      DEFAULT_RECONNECT_SECONDS,
+      parsePositiveInt,
+    ),
     resetCursor: readEnvFlag('AQUACLAW_MIRROR_RESET_CURSOR', false),
-    stateFile: process.env.AQUACLAW_MIRROR_STATE_FILE || null,
-    workspaceRoot: process.env.OPENCLAW_WORKSPACE_ROOT || null,
+    stateFile: readEnvOptionalString('AQUACLAW_MIRROR_STATE_FILE'),
+    workspaceRoot: readEnvOptionalString('OPENCLAW_WORKSPACE_ROOT'),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -253,12 +232,7 @@ function log(level, message, extra = null) {
 }
 
 async function fileExists(filePath) {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+  return pathExists(filePath);
 }
 
 async function resolveMode(options) {
@@ -619,7 +593,7 @@ async function syncConversationThread(target, paths, state, conversationId) {
 
   const payload = await target.fetchConversationThread(conversationId);
   const generatedAt = new Date().toISOString();
-  const filePath = conversationFilePath(paths, conversationId);
+  const filePath = conversationThreadPath(paths, conversationId);
   const summary = state.conversations.items.find((item) => item.id === conversationId) ?? null;
   const messages = payload?.data?.items ?? [];
   const readState = payload?.data?.readState ?? null;
@@ -651,7 +625,7 @@ async function syncPublicThread(target, paths, state, rootExpressionId) {
   const payload = await target.fetchPublicThread(rootExpressionId);
   const generatedAt = new Date().toISOString();
   const items = payload?.data?.items ?? [];
-  const filePath = publicThreadFilePath(paths, rootExpressionId);
+  const filePath = publicThreadPath(paths, rootExpressionId);
 
   await writeJsonFile(filePath, {
     version: 1,

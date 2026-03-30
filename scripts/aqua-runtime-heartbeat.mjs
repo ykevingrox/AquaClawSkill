@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 
 import { mkdir, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import process from 'node:process';
 
+import {
+  readEnvOptionalString,
+  readEnvParsed,
+  readEnvString,
+  resolveWorkspaceRootFromEnv,
+} from './env-readers.mjs';
 import { loadHostedConfig, resolveHeartbeatStatePath } from './hosted-aqua-common.mjs';
 
 const LABEL = 'ai.aquaclaw.runtime-heartbeat';
 const VALID_MODES = new Set(['auto', 'local', 'hosted']);
-const DEFAULT_WORKSPACE_ROOT = process.env.OPENCLAW_WORKSPACE_ROOT
-  ? path.resolve(process.env.OPENCLAW_WORKSPACE_ROOT)
-  : path.join(os.homedir(), '.openclaw', 'workspace');
+const DEFAULT_WORKSPACE_ROOT = resolveWorkspaceRootFromEnv();
 const DEFAULT_HUB_URL = 'http://127.0.0.1:8787';
 const DEFAULT_MIN_INTERVAL_SECONDS = 15 * 60;
 const DEFAULT_JITTER_SECONDS = 60;
@@ -66,25 +68,24 @@ function normalizeHubUrl(raw) {
 
 function parseOptions(argv) {
   const options = {
-    connectionType: String(process.env.AQUACLAW_HEARTBEAT_CONNECTION_TYPE || DEFAULT_CONNECTION_TYPE).trim(),
-    connectTimeoutMs: parsePositiveInteger(
-      process.env.AQUACLAW_HEARTBEAT_CONNECT_TIMEOUT_MS || DEFAULT_CONNECT_TIMEOUT_MS,
+    connectionType: readEnvString('AQUACLAW_HEARTBEAT_CONNECTION_TYPE', DEFAULT_CONNECTION_TYPE),
+    connectTimeoutMs: readEnvParsed(
       'AQUACLAW_HEARTBEAT_CONNECT_TIMEOUT_MS',
+      DEFAULT_CONNECT_TIMEOUT_MS,
+      parsePositiveInteger,
     ),
-    hubUrl: normalizeHubUrl(process.env.AQUACLAW_HUB_URL || DEFAULT_HUB_URL),
-    hostedConfigPath: process.env.AQUACLAW_HOSTED_CONFIG || null,
-    jitterSeconds: parsePositiveInteger(
-      process.env.AQUACLAW_HEARTBEAT_JITTER_SECONDS || DEFAULT_JITTER_SECONDS,
-      'AQUACLAW_HEARTBEAT_JITTER_SECONDS',
-    ),
-    minIntervalSeconds: parsePositiveInteger(
-      process.env.AQUACLAW_HEARTBEAT_MIN_SECONDS || DEFAULT_MIN_INTERVAL_SECONDS,
+    hubUrl: normalizeHubUrl(readEnvString('AQUACLAW_HUB_URL', DEFAULT_HUB_URL)),
+    hostedConfigPath: readEnvOptionalString('AQUACLAW_HOSTED_CONFIG'),
+    jitterSeconds: readEnvParsed('AQUACLAW_HEARTBEAT_JITTER_SECONDS', DEFAULT_JITTER_SECONDS, parsePositiveInteger),
+    minIntervalSeconds: readEnvParsed(
       'AQUACLAW_HEARTBEAT_MIN_SECONDS',
+      DEFAULT_MIN_INTERVAL_SECONDS,
+      parsePositiveInteger,
     ),
-    mode: String(process.env.AQUACLAW_HEARTBEAT_MODE || 'auto').trim().toLowerCase(),
+    mode: readEnvString('AQUACLAW_HEARTBEAT_MODE', 'auto').toLowerCase(),
     once: false,
     repeatLogEvery: DEFAULT_REPEAT_LOG_EVERY,
-    stateFile: process.env.AQUACLAW_HEARTBEAT_STATE_FILE || null,
+    stateFile: readEnvOptionalString('AQUACLAW_HEARTBEAT_STATE_FILE'),
     workspaceRoot: DEFAULT_WORKSPACE_ROOT,
   };
 

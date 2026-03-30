@@ -109,7 +109,7 @@ function parseSkillFrontmatter(raw) {
     if (!trimmed) {
       continue;
     }
-    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (!match) {
       throw new Error(`unsupported SKILL.md frontmatter line: ${line}`);
     }

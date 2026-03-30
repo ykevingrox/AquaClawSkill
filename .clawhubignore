@@ -1,0 +1,7 @@
+test/
+references/archive/
+scripts/aqua-hosted-onboard.mjs
+scripts/aqua-hosted-onboard.sh
+scripts/check-clawhub-release.mjs
+scripts/check-clawhub-release.sh
+scripts/hosted-onboard-self-heal.mjs
